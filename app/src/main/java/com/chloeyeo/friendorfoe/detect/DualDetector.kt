@@ -72,7 +72,9 @@ class DualDetector(
 
     override fun detect(frame: Frame): List<Detection> = detectRound(frame, RoundPlan.FULL)
 
-    override fun detectRound(frame: Frame, plan: RoundPlan): List<Detection> {
+    override fun detectRound(frame: Frame, requested: RoundPlan): List<Detection> {
+        // A fast YOLO drone model scans the whole frame in about the time of one crop, so every round is a full scan.
+        val plan = if (drone is OnnxYoloDetector && !requested.full) requested.copy(full = true, crops = emptyList()) else requested
         val t0 = clockNanos()
         val drones = if (plan.full) drone.classMap.map(drone.detectRaw(frame)) else plan.crops.mapNotNull { cropDetect(frame, it) }
         val t1 = clockNanos()
@@ -137,12 +139,26 @@ class DualDetector(
          * is the crop-round drone model, the same weights at a small input ([ClassMap.DRONE_RAHUL_CROP]).
          */
         fun clikaRt(droneDir: String, personDir: String?, cropDir: String? = null): DualDetector {
+            if (droneDir.endsWith(".onnx")) return yolo(droneDir, personDir)
             val base = if (personDir == null) DRONE_ONLY_NAME else NAME
             return DualDetector(
             drone = ClikaRtDetector(droneDir, ClassMap.DRONE_RAHUL, "clikart:" + java.io.File(droneDir).name),
             person = personDir?.let { ClikaRtDetector(it, ClassMap.DFINE_PERSON, "clikart:" + java.io.File(it).name) },
             name = INPUT_SUFFIX.find(java.io.File(droneDir).name)?.let { "$base @${it.groupValues[1]}" } ?: base,
             cropDrone = cropDir?.let { ClikaRtDetector(it, ClassMap.DRONE_RAHUL_CROP, "clikart:" + java.io.File(it).name) },
+            )
+        }
+
+        /**
+         * A drone-trained YOLO ONNX file ([OnnxYoloDetector]) as the drone model, with no crop model: it is fast enough
+         * that [detectRound] turns every crop round into a full scan.
+         */
+        fun yolo(droneFile: String, personDir: String?): DualDetector {
+            val fileName = java.io.File(droneFile).nameWithoutExtension
+            return DualDetector(
+                drone = OnnxYoloDetector(droneFile, ClassMap.DRONE_YOLO),
+                person = personDir?.let { ClikaRtDetector(it, ClassMap.DFINE_PERSON, "clikart:" + java.io.File(it).name) },
+                name = "clikart:$fileName",
             )
         }
 

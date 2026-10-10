@@ -66,6 +66,18 @@ data class ClassMap(
          */
         val DRONE_RAHUL_CROP = DRONE_RAHUL.copy(tag = "crop", thresholds = mapOf(ObjClass.DRONE to 0.25f))
 
+        /**
+         * A drone-trained YOLO11n ONNX (`marie-kjelberg/drone-detector`, one class): 0 drone >= 0.40. The model
+         * carries no label table, so nothing is checked at open.
+         */
+        val DRONE_YOLO = ClassMap(
+            tag = "yolo",
+            classes = mapOf(0L to ObjClass.DRONE),
+            thresholds = mapOf(ObjClass.DRONE to 0.40f),
+            expectedLabelCount = null,
+            expectedLabels = emptyMap(),
+        )
+
         /** `ustc-community/dfine-small-coco` (D-FINE S, COCO 80): only 0 person >= 0.50, everything else dropped. */
         val DFINE_PERSON = ClassMap(
             tag = "person",

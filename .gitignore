@@ -27,3 +27,6 @@ __pycache__/
 # Laptop: scrcpy backup videos, pytest cache
 /recordings/
 .pytest_cache/
+
+# drone YOLO weights (AGPL-3.0, adb-pushed, never committed)
+*.onnx

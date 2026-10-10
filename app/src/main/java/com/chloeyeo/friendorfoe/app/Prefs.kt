@@ -18,6 +18,7 @@ class Prefs(context: Context) {
     private val sp: SharedPreferences = context.getSharedPreferences("fof_prefs", Context.MODE_PRIVATE)
 
     /** The D-04 model directory: `<filesDir>/models/rtdetr_v2_r18vd` (the snapshot is copied there on the phone). */
+    private val filesRoot: File = context.filesDir
     private val defaultModelDir: String = File(context.filesDir, "models/rtdetr_v2_r18vd").path
 
     /**
@@ -128,6 +129,10 @@ class Prefs(context: Context) {
     /** The fresh-install detector: the drone specialist alone at 224x224, no person model (`drone` launch extra). */
     val defaultDroneOnlyConfig: DetectorConfig
         get() = DetectorConfig.Dual(defaultDroneModelDir, null)
+
+    /** The drone-trained YOLO11n ONNX alone (`yolo` / `yolo<N>` launch extras), `files/models/drone_yolo11n_<N>.onnx`. */
+    fun yoloConfig(input: Int = 480): DetectorConfig =
+        DetectorConfig.Dual(File(filesRoot, "models/drone_yolo11n_$input.onnx").path, null)
 
     /** The same pair at 640x640, for the `dual640` launch extra (A/B against the 320 default). */
     val dual640Config: DetectorConfig

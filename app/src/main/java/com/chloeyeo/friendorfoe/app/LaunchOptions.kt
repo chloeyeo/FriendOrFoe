@@ -135,6 +135,11 @@ data class LaunchOptions(
                 "dual" -> app.prefs.defaultDualConfig
                 "drone" -> app.prefs.defaultDroneOnlyConfig
                 "dual640" -> app.prefs.dual640Config
+                "yolo" -> app.prefs.yoloConfig()
+                "yolo320" -> app.prefs.yoloConfig(320)
+                "yolo416" -> app.prefs.yoloConfig(416)
+                "yolo480" -> app.prefs.yoloConfig(480)
+                "yolo640" -> app.prefs.yoloConfig(640)
                 else -> when (val d = DetectorConfig.decode(value)) {
                     is DetectorConfig.ClikaRt ->
                         if (inAppStorage(app, d.modelDir)) d else null.also { Log.w(TAG, "detector extra ignored: dir outside app storage") }
