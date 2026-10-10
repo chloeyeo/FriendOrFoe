@@ -23,6 +23,10 @@ export interface Settings {
   serveUrl: string;
   threads: number;
   intervalMs: number;
+  /** Which classes to detect; a class switched off is not drawn, and its model is not run. */
+  detectPerson: boolean;
+  detectDrone: boolean;
+  detectBird: boolean;
   signal: SignalKindSetting;
   fakeMode: FakeMode;
   /** Laptop dashboard, e.g. `http://192.168.43.100:8081`; empty disables posting. */
@@ -55,6 +59,9 @@ export const DEFAULT_SETTINGS: Settings = {
   serveUrl: 'http://192.168.43.100:8000',
   threads: 2,
   intervalMs: Platform.OS === 'ios' ? 500 : 1000,
+  detectPerson: true,
+  detectDrone: true,
+  detectBird: true,
   signal: 'fake',
   fakeMode: 'HONEST',
   dashboardUrl: '',
@@ -75,6 +82,14 @@ const SCHEMA = 3;
 export function availableDetectors(): DetectorKind[] {
   if (!hasNativeCamera) return ['fake'];
   return onDeviceDetector === 'coreml' ? ['coreml', 'fake'] : ['clikart', 'http', 'fake'];
+}
+
+/** The native model tags that must run for the classes switched on (iPhone Core ML, Android dual ClikaRT). */
+export function modelsFor(s: Settings): string[] {
+  if (s.detector === 'coreml') {
+    return [...(s.detectPerson || s.detectBird ? ['coco'] : []), ...(s.detectDrone ? ['drone', 'drone2'] : [])];
+  }
+  return [...(s.detectPerson ? ['clika-person'] : []), ...(s.detectDrone ? ['clika-drone'] : [])];
 }
 
 export function acceptedIds(s: Settings): string[] {

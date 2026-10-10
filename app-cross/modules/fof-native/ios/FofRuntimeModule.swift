@@ -26,7 +26,7 @@ public final class FofRuntimeModule: Module {
     }
 
     View(FofCameraView.self) {
-      Events("onFrame", "onGray", "onCameraError")
+      Events("onFrame", "onGray", "onCameraReady", "onCameraError")
 
       Prop("detector") { (view: FofCameraView, value: String) in
         view.detector = value
@@ -36,6 +36,12 @@ public final class FofRuntimeModule: Module {
         view.intervalMs = max(100, value)
       }
       Prop("thumbnailUrl") { (_: FofCameraView, _: String) in }
+      Prop("models") { (view: FofCameraView, value: [String]) in
+        view.models = Set(value)
+      }
+      Prop("zoom") { (view: FofCameraView, value: Double) in
+        view.zoom = value
+      }
       Prop("active") { (view: FofCameraView, value: Bool) in
         view.active = value
       }

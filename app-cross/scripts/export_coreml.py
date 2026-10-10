@@ -2,12 +2,13 @@
 
     FofCoco    YOLO11n, COCO 80 classes: person, bird (and the airplane/kite drone proxies)
     FofDrone   sapoepsilon/yolov11s-drone-detector (Apache-2.0): 'drone'
+    FofDrone2  TomSmail/drone-yolo-v1 (CC-BY-4.0): 'quadcopter', 'fixed-wing', used only to confirm FofDrone
 
-Chosen on 13 real drone photos (DJI Phantom 4, Inspire, Mavic 2/Pro/Mini, FPV racers, a VTOL fixed-wing) against 40
-drone-free COCO val2017 images: at the iPhone's 0.6 floor it keeps 12/13 drones and fires on 4/40 images. A second
-detector (TomSmail/drone-yolo-v1) only added false drones (6/40 at 0.6), and the COCO airplane/kite proxies found no
-drone FofDrone missed, so neither is used.
-Usage: python export_coreml.py <work dir> <FofDrone .pt>; run through scripts/export-coreml.sh.
+Chosen on 20 real drone photos (DJI Phantom 4, Inspire, Mavic 2/Pro/Mini/Mini 4, FPV racers, hexacopters, a VTOL
+fixed-wing, a Parrot AR) against 168 drone-free COCO images: FofDrone at 0.78 alone keeps 14/20 and fires on 3/168;
+requiring FofDrone2 to agree (a box of its own overlapping at IoU >= 0.3) keeps 14/20 and fires on 2/168. On its own
+FofDrone2 adds false drones, so it only confirms. The COCO airplane/kite proxies found no drone FofDrone missed.
+Usage: python export_coreml.py <work dir> <FofDrone .pt> <FofDrone2 .pt>; run through scripts/export-coreml.sh.
 """
 
 import shutil
@@ -19,7 +20,7 @@ from ultralytics import YOLO
 work = Path(sys.argv[1])
 work.mkdir(parents=True, exist_ok=True)
 
-for name, weights in {"FofCoco": "yolo11n.pt", "FofDrone": sys.argv[2]}.items():
+for name, weights in {"FofCoco": "yolo11n.pt", "FofDrone": sys.argv[2], "FofDrone2": sys.argv[3]}.items():
     model = YOLO(weights)
     print(name, "classes:", model.names)
     exported = Path(model.export(format="coreml", nms=True, imgsz=640, half=True))

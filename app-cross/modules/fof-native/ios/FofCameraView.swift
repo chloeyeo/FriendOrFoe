@@ -14,6 +14,7 @@ import UIKit
 final class FofCameraView: ExpoView, AVCaptureVideoDataOutputSampleBufferDelegate {
   private let onFrame = EventDispatcher()
   private let onGray = EventDispatcher()
+  private let onCameraReady = EventDispatcher()
   private let onCameraError = EventDispatcher()
 
   private let session = AVCaptureSession()
@@ -25,12 +26,20 @@ final class FofCameraView: ExpoView, AVCaptureVideoDataOutputSampleBufferDelegat
   private var busy = false
   private var lastGray: CFTimeInterval = 0
   private var configured = false
+  private var device: AVCaptureDevice?
   private var rotation: AVCaptureDevice.RotationCoordinator?
   private var rotationObservers: [NSKeyValueObservation] = []
   private var lastRun: CFTimeInterval = 0
 
   var detector = "none"
   var intervalMs = 1000
+  /// The model tags to run (Settings: which classes to detect); nil runs every bundled model.
+  var models: Set<String>?
+  /// Digital zoom of the capture itself, so preview and analysed frames stay the same picture. Clamped to the
+  /// device's range and 10x.
+  var zoom: Double = 1 {
+    didSet { sessionQueue.async { [weak self] in self?.applyZoom() } }
+  }
   var active = true {
     didSet { active ? start() : stop() }
   }
@@ -96,8 +105,28 @@ final class FofCameraView: ExpoView, AVCaptureVideoDataOutputSampleBufferDelegat
     guard session.canAddOutput(output) else { throw FofException("camera output refused") }
     session.addOutput(output)
     configured = true
+    self.device = device
+    applyZoom()
+    let maxZoom = min(Double(device.maxAvailableVideoZoomFactor), Self.maxZoom)
+    let minZoom = Double(device.minAvailableVideoZoomFactor)
+    DispatchQueue.main.async { [weak self] in self?.onCameraReady(["minZoom": minZoom, "maxZoom": maxZoom]) }
     DispatchQueue.main.async { [weak self] in self?.followRotation(of: device) }
   }
+
+  /// Session queue.
+  private func applyZoom() {
+    guard let device else { return }
+    let target = CGFloat(max(Double(device.minAvailableVideoZoomFactor), min(zoom, Double(device.maxAvailableVideoZoomFactor), Self.maxZoom)))
+    do {
+      try device.lockForConfiguration()
+      device.videoZoomFactor = target
+      device.unlockForConfiguration()
+    } catch {
+      emitError("CAMERA_ZOOM", error.localizedDescription)
+    }
+  }
+
+  private static let maxZoom = 10.0
 
   /// Main queue. Keeps both the preview and the analysed frames level with the horizon as the phone turns.
   private func followRotation(of device: AVCaptureDevice) {
@@ -158,7 +187,7 @@ final class FofCameraView: ExpoView, AVCaptureVideoDataOutputSampleBufferDelegat
       if FofDetector.shared.isOpen {
         let t0 = CACurrentMediaTime()
         do {
-          payload["rows"] = try FofDetector.shared.detect(buffer, width: width, height: height)
+          payload["rows"] = try FofDetector.shared.detect(buffer, width: width, height: height, models: models)
           payload["detected"] = true
         } catch {
           payload["error"] = error.localizedDescription

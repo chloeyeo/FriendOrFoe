@@ -8,7 +8,8 @@ import Vision
  iPhone runs Core ML detectors through Vision instead (this is not the SC1 path; phone A's ClikaRT is):
 
  - `FofCoco` (YOLO11n, COCO 80): `person`, `bird`, and the `airplane` / `kite` proxies the native app also uses;
- - `FofDrone` (sapoepsilon/yolov11s-drone-detector, Apache-2.0): `drone`, trained on real drone photos.
+ - `FofDrone` (sapoepsilon/yolov11s-drone-detector, Apache-2.0): `drone`, trained on real drone photos;
+ - `FofDrone2` (TomSmail/drone-yolo-v1, CC-BY-4.0): only confirms FofDrone (`src/detect/verify.ts`).
 
  FofDrone found 9 of 13 real drone photos (Phantom, Inspire, Mavic, FPV racers, a VTOL fixed-wing) at the 0.78 floor
  the iPhone build uses (see scripts/export_coreml.py). Both are exported with NMS (`scripts/export-coreml.sh`), so
@@ -18,7 +19,7 @@ import Vision
 final class FofDetector {
   static let shared = FofDetector()
 
-  private static let models: [(tag: String, resource: String)] = [("coco", "FofCoco"), ("drone", "FofDrone")]
+  private static let models: [(tag: String, resource: String)] = [("coco", "FofCoco"), ("drone", "FofDrone"), ("drone2", "FofDrone2")]
   private let lock = NSLock()
   private var requests: [(tag: String, request: VNCoreMLRequest)] = []
 
@@ -62,10 +63,11 @@ final class FofDetector {
     lock.unlock()
   }
 
-  /// Raw rows of one upright frame, in frame pixels (top-left origin), both models together.
-  func detect(_ buffer: CVPixelBuffer, width: Int, height: Int) throws -> [[String: Any]] {
+  /// Raw rows of one upright frame, in frame pixels (top-left origin), from the models tagged in `models` (all when
+  /// nil): a class switched off in Settings does not cost its model's inference.
+  func detect(_ buffer: CVPixelBuffer, width: Int, height: Int, models: Set<String>? = nil) throws -> [[String: Any]] {
     lock.lock()
-    let current = requests
+    let current = requests.filter { models?.contains($0.tag) ?? true }
     lock.unlock()
     guard !current.isEmpty else { return [] }
     try VNImageRequestHandler(cvPixelBuffer: buffer, orientation: .up, options: [:]).perform(current.map { $0.request })

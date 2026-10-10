@@ -68,6 +68,11 @@ export interface FofCameraViewProps {
   /** Dashboard base URL for the preview thumbnail; empty disables it. */
   thumbnailUrl: string;
   active: boolean;
+  /** Model tags to run (Settings: which classes to detect); omitted runs every model. */
+  models?: string[];
+  /** Digital zoom of the capture, clamped natively to the camera's range and 10x. */
+  zoom?: number;
+  onCameraReady?: (event: { nativeEvent: { minZoom: number; maxZoom: number } }) => void;
   onFrame?: (event: { nativeEvent: CameraFrameEvent }) => void;
   onGray?: (event: { nativeEvent: GrayEvent }) => void;
   onCameraError?: (event: { nativeEvent: CameraErrorEvent }) => void;

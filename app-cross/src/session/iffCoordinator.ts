@@ -6,6 +6,7 @@ import {
   type BoxF,
   type EventUi,
   type FrameResult,
+  type ObjClass,
   type IffState,
   type ObserverUiState,
   type SignalUi,
@@ -183,6 +184,37 @@ export class IffCoordinator {
     this.frameWidth = gray.frameWidth;
     this.frameHeight = gray.frameHeight;
     if (this.motion.ids.size === 0 && !this._lock) return;
+    this.publishTracks(this.clock(), false);
+  }
+
+  /**
+   * The camera zoomed by `factor` (new zoom / old zoom). Digital zoom crops the frame around its centre, so every
+   * tracked box, and the locked box, is scaled about the centre and stays on its object with its id and verdict; the
+   * motion templates no longer match the new scale and are dropped until the next detection reseeds them.
+   */
+  rescale(factor: number): void {
+    if (!(factor > 0) || factor === 1 || this.frameWidth <= 0 || this.frameHeight <= 0) return;
+    const cx = this.frameWidth / 2;
+    const cy = this.frameHeight / 2;
+    const scale = (b: BoxF): BoxF => ({
+      left: cx + (b.left - cx) * factor,
+      top: cy + (b.top - cy) * factor,
+      right: cx + (b.right - cx) * factor,
+      bottom: cy + (b.bottom - cy) * factor,
+    });
+    this.tracker.mapBoxes(scale);
+    this.motion.reset();
+    if (this._lock) this._lock = { ...this._lock, rect: scale(this._lock.rect) };
+    this.publishTracks(this.clock(), false);
+  }
+
+  /**
+   * A class switched off in Settings: its rings go at once instead of coasting through the sticky window. A drone
+   * under an open challenge keeps its lock, so the verdict still lands.
+   */
+  hideClasses(classes: ObjClass[]): void {
+    if (!classes.length) return;
+    this.tracker.forgetClasses(classes);
     this.publishTracks(this.clock(), false);
   }
 

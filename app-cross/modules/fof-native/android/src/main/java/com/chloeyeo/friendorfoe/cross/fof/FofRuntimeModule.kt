@@ -40,11 +40,13 @@ class FofRuntimeModule : Module() {
     }
 
     View(FofCameraView::class) {
-      Events("onFrame", "onGray", "onCameraError")
+      Events("onFrame", "onGray", "onCameraReady", "onCameraError")
       Prop("detector") { view: FofCameraView, value: String -> view.detector = value }
       Prop("serveUrl") { view: FofCameraView, value: String -> view.serveUrl = value }
       Prop("intervalMs") { view: FofCameraView, value: Int -> view.intervalMs = value.toLong().coerceAtLeast(100L) }
       Prop("thumbnailUrl") { view: FofCameraView, value: String -> view.thumbnailUrl = value }
+      Prop("models") { view: FofCameraView, value: List<String> -> view.models = value.toSet() }
+      Prop("zoom") { view: FofCameraView, value: Double -> view.setZoom(value.toFloat()) }
       Prop("active") { view: FofCameraView, value: Boolean -> view.setActive(value) }
       OnViewDestroys { view: FofCameraView -> view.release() }
     }

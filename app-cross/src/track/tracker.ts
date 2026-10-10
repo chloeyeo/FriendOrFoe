@@ -90,6 +90,16 @@ export class Tracker {
     if (i >= 0) this.live[i] = { ...this.live[i], box };
   }
 
+  /** Drops every live track of the given classes (a class switched off in Settings). */
+  forgetClasses(classes: ObjClass[]): void {
+    this.live = this.live.filter((t) => !classes.includes(t.cls));
+  }
+
+  /** Moves every live track's box through `fn` (a camera zoom), keeping ids, scores and timings. */
+  mapBoxes(fn: (box: BoxF) => BoxF): void {
+    this.live = this.live.map((t) => ({ ...t, box: fn(t.box) }));
+  }
+
   /** Forgets every track; ids keep counting up so an old ring is never confused with a new object. */
   reset(): void {
     this.live = [];
