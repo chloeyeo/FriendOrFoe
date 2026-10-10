@@ -5,6 +5,7 @@ import android.content.Context
 import android.system.Os
 import android.util.Log
 import com.chloeyeo.friendorfoe.BuildConfig
+import com.chloeyeo.friendorfoe.camera.GraySampler
 import com.chloeyeo.friendorfoe.detect.ClikaRtDetector
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
 import com.chloeyeo.friendorfoe.detect.Detectors
@@ -21,6 +22,7 @@ import io.clika.runtime.ClikaRtAndroid
 import io.clika.runtime.ClikaRtException
 import io.clika.runtime.Ops
 import io.clika.runtime.Tensors
+import java.nio.ByteBuffer
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -135,13 +137,14 @@ class FofApplication : Application() {
                     val t = detector.open()
                     if (BuildConfig.DEBUG && DebugHooks.logRawRows) {
                         detector.drone.rawListener = { DebugHooks.logRows("raw drone", it) }
-                        detector.person.rawListener = { DebugHooks.logRows("raw person", it) }
+                        detector.person?.rawListener = { DebugHooks.logRows("raw person", it) }
+                        detector.cropDrone?.rawListener = { DebugHooks.logRows("raw crop", it) }
                     }
                     Log.i(
                         TAG,
                         "runtime up: ${detector.drone.name} load ${t.drone.loadMs} ms warm ${t.drone.warmupMs} ms + " +
-                            "${detector.person.name} load ${t.person.loadMs} ms warm ${t.person.warmupMs} ms threads $threads " +
-                            "device ${t.drone.device}/${t.person.device} dtype ${t.drone.dtype}/${t.person.dtype}",
+                            (detector.person?.let { p -> t.person?.let { "${p.name} load ${it.loadMs} ms warm ${it.warmupMs} ms" } } ?: "no person model") +
+                            " threads $threads device ${t.drone.device} dtype ${t.drone.dtype}",
                     )
                     val crop = detector.cropDrone
                     when {
@@ -150,7 +153,8 @@ class FofApplication : Application() {
                         else -> Log.w(TAG, "crop model ${crop.name} did not open (${detector.cropOpenFailure?.take(120)}), crop rounds run on ${detector.drone.name}")
                     }
                     "${detector.drone.classMap.tag} ${secs(t.drone.loadMs)}+${secs(t.drone.warmupMs)} · " +
-                        "${detector.person.classMap.tag} ${secs(t.person.loadMs)}+${secs(t.person.warmupMs)} · $threads thr"
+                        (detector.person?.let { p -> t.person?.let { "${p.classMap.tag} ${secs(it.loadMs)}+${secs(it.warmupMs)} · " } } ?: "drone only · ") +
+                        "$threads thr"
                 }
             }
             else -> {
@@ -232,7 +236,12 @@ class FofApplication : Application() {
      * ([IffCoordinator.motionTick]) and, once per second, logs `motion F fps median M ms/tick sample S ms tracks=K`
      * and refreshes the strip note (`detect 0.8 s crop / 2.3 s full · track 10 fps`). Never touches the runtime lane.
      */
-    fun runMotionTick(gray: GrayFrame) {
+    fun runMotionTick(cameraGray: GrayFrame) {
+        // With a still frame the motion path samples the still too, so the boxes stay on the still's objects.
+        val still = if (BuildConfig.DEBUG) DebugHooks.stillFrame else null
+        val gray = still?.let {
+            GraySampler.sample(ByteBuffer.wrap(it.rgba), it.width, it.height, it.width * 4, 4, 0, cameraGray.timestampNanos)
+        } ?: cameraGray
         val t0 = System.nanoTime()
         try {
             coordinator.motionTick(gray)
