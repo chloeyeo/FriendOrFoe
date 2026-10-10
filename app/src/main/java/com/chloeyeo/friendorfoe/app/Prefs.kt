@@ -35,13 +35,17 @@ class Prefs(context: Context) {
     private val dual640PersonModelDir: String = File(context.filesDir, "models/dfine_small_coco").path
 
     /**
-     * Which detector runs; the dual ClikaRT detector by default; `clikart:` (r18 alone), `fake` or `http:` only when
-     * stored. An unreadable stored
-     * value still falls back to `fake` through [DetectorConfig.decode].
+     * Which detector runs; by default the marie YOLO11n drone ONNX at 480 ([DEFAULT_YOLO], the phone-test pick)
+     * when its file was pushed, else the drone RT-DETR; `clikart:` (r18 alone), `fake` or `http:` only when stored.
+     * An unreadable stored value still falls back to `fake` through [DetectorConfig.decode].
      */
     var detectorConfig: DetectorConfig
-        get() = sp.getString(KEY_DETECTOR, null)?.let(DetectorConfig::decode) ?: defaultDroneOnlyConfig
+        get() = sp.getString(KEY_DETECTOR, null)?.let(DetectorConfig::decode) ?: defaultDetectorConfig
         set(value) = sp.edit().putString(KEY_DETECTOR, value.encode()).apply()
+
+    /** [DEFAULT_YOLO] when `files/models/<it>.onnx` exists, else [defaultDroneOnlyConfig]. */
+    val defaultDetectorConfig: DetectorConfig
+        get() = if (File(filesRoot, "models/$DEFAULT_YOLO.onnx").isFile) yoloFile(DEFAULT_YOLO) else defaultDroneOnlyConfig
 
     /** This observer's id (2 bytes on the wire). */
     var challengerId: Int
@@ -144,6 +148,10 @@ class Prefs(context: Context) {
 
     private companion object {
         const val KEY_DETECTOR = "detectorConfig"
+
+        /** The default drone detector file (`files/models/drone_yolo11n_480.onnx`, marie YOLO11n at 480: the phone-test pick; adb-pushed, never committed). */
+        const val DEFAULT_YOLO = "drone_yolo11n_480"
+
         const val KEY_CHALLENGER_ID = "challengerId"
         const val KEY_ACCEPTED_DRONE_IDS = "acceptedDroneIds"
         const val KEY_PERSON_THRESHOLD = "personThreshold"

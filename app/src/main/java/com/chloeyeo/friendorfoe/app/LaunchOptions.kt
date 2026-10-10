@@ -140,7 +140,7 @@ data class LaunchOptions(
                 "dual" -> app.prefs.defaultDualConfig
                 "drone" -> app.prefs.defaultDroneOnlyConfig
                 "dual640" -> app.prefs.dual640Config
-                "yolo" -> app.prefs.yoloConfig()
+                "yolo" -> app.prefs.defaultDetectorConfig
                 "yolo320" -> app.prefs.yoloConfig(320)
                 "yolo416" -> app.prefs.yoloConfig(416)
                 "yolo480" -> app.prefs.yoloConfig(480)
