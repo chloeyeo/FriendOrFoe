@@ -5,34 +5,52 @@ import com.chloeyeo.friendorfoe.detect.BoxF
 import com.chloeyeo.friendorfoe.detect.Detector
 import com.chloeyeo.friendorfoe.detect.Frame
 import com.chloeyeo.friendorfoe.detect.ObjClass
+import com.chloeyeo.friendorfoe.signal.ChallengeRequest
+import com.chloeyeo.friendorfoe.signal.GadgetUnavailableException
 import com.chloeyeo.friendorfoe.signal.ReChecks
+import com.chloeyeo.friendorfoe.signal.Redact
+import com.chloeyeo.friendorfoe.signal.SignalEvent
+import com.chloeyeo.friendorfoe.signal.SignalKind
 import com.chloeyeo.friendorfoe.signal.SignalSource
 import com.chloeyeo.friendorfoe.track.BoxLock
 import com.chloeyeo.friendorfoe.track.GrayFrame
 import com.chloeyeo.friendorfoe.track.MotionTracker
 import com.chloeyeo.friendorfoe.track.Tracker
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The session: frames in, [ObserverUiState] out (integration lead). [tick] is real — detections go through the
  * [Tracker] (wall-clock sticky windows, D-09) and come out as [TrackUi]s in preview coordinates. [challenge] is the
- * H7-H10 integration work; step 1 is real (Phase 2, DET-06), steps 2-3 are Phase 5:
+ * tap → signal → re-check → verdict path (DET-06, OBS-02, PHY-01/02, SIG-03):
  *
- * 1. (done) refuse while a challenge is in flight; `lock = BoxLock(boxId, track.box, now + 10 s)` and set the
- *    track's state to [IffState.Challenged] (the ring shows the countdown); [tick] keeps the locked box on screen
- *    at its frozen rect when the tracker loses the object and closes the window at 10 s;
- *
- * TODO(integration lead / Chloe, Phase 5): challenge(boxId) steps 2-3:
- * 2. `req = ChallengeRequest(boxId, prefs.challengerId, now / 1000)`; `t0 = SystemClock.elapsedRealtime()`;
- *    launch `signalSource.challenge(req)` on a coroutine scope with a 10 s timeout; each [SignalEvent.Status]
- *    goes to the event log; the [SignalEvent.Answer] goes through `reChecks.check(answer, roundTripMs)` into
- *    [IffState.Verdict] on the locked box, a [SignalUi] row (newest first) and an event line; no answer in time
- *    -> `Verdict(UNKNOWN, "no response", ...)`;
- * 3. log the verdict as a structured [EventUi] (cls, box, verdict, reason, …) and release the lock; the UI mirrors
- *    the event log to the laptop dashboard (`FriendOrFoeApp` → `net/EventClient`), so do not post it here too.
+ * 1. refuse while a challenge is in flight (or the tapped box still shows its verdict);
+ *    `lock = BoxLock(boxId, track.box, now + 10 s)` and set the track's state to [IffState.Challenged] (the ring
+ *    shows the countdown) at once; [tick] keeps the locked box on screen at its last motion position / frozen rect
+ *    when the tracker loses the object;
+ * 2. `req = ChallengeRequest(boxId, challengerId(), now / 1000)` goes to [signalSource] on [scope]; the phone-side
+ *    round trip is measured with [elapsedMillis] from the call (the USB source writes the line there) to the
+ *    [SignalEvent.Answer]; each [SignalEvent.Status] goes to the event log;
+ * 3. the answer goes through `reChecks.check(answer, roundTripMs)` into [IffState.Verdict] on the LOCKED box (the
+ *    lock's id, whatever is under the tap point now), a [SignalUi] row (newest first) and a structured [EventUi];
+ *    the lock is released. No answer inside the window -> `UNKNOWN · no response`; a source that cannot run the
+ *    challenge ([GadgetUnavailableException]) -> `UNKNOWN · <reason>` at once (`no gadget`). An answer for a
+ *    challenge that is no longer open (window passed, reset) is logged and dropped, its nonce still recorded;
+ * 4. the verdict stays drawn for [VERDICT_HOLD_MS] (on the frozen box if the tracker lost the object), then the
+ *    box is back to `drone · ?` and can be challenged again. The UI mirrors the event log to the laptop dashboard
+ *    (`FriendOrFoeApp` → `net/EventClient`), so nothing is posted from here.
  *
  * 10 fps between detections: [motionTick] (the camera controller's `motion` executor) moves every tracked box by
  * template matching on a small gray frame ([MotionTracker]); [tick] fast-forwards each detection from its capture
@@ -47,6 +65,9 @@ import kotlinx.coroutines.flow.update
  *
  * @param offlineProbe evaluated once per [tick] into [StatusUi.offline] (D-12; `app/OfflineProbe` on the phone,
  *   a constant in tests); the default `{ true }` keeps the badge OFFLINE when nothing is injected
+ * @param challengerId this observer's id for the challenge line, read on every tap (`Prefs.challengerId`)
+ * @param elapsedMillis a monotonic clock for the round trip (`SystemClock.elapsedRealtime()` semantics)
+ * @param scope where challenges run; tests pass an unconfined scope so an answer lands synchronously
  */
 class IffCoordinator(
     val detector: Detector,
@@ -57,6 +78,9 @@ class IffCoordinator(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val offlineProbe: () -> Boolean = { true },
     private val motion: MotionTracker = MotionTracker(),
+    private val challengerId: () -> Int = { DEFAULT_CHALLENGER_ID },
+    private val elapsedMillis: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val _state = MutableStateFlow(ObserverUiState(status = StatusUi(detectorName = detector.name)))
 
@@ -75,6 +99,20 @@ class IffCoordinator(
 
     /** The tapped track's latest score, shown on the synthetic lock box once the tracker has lost the object. */
     private var lockScore = 0f
+
+    /** The challenge in flight (matches [lock]); [seq] tells a stale answer from the current one. Under stateLock. */
+    private class Pending(val seq: Long, val req: ChallengeRequest)
+
+    private var pending: Pending? = null
+    private var seqCounter = 0L
+
+    /** A verdict kept on screen for [VERDICT_HOLD_MS]; [rect] (frame px) is drawn if the tracker lost the object. */
+    private class Hold(val rect: BoxF, val until: Long, val score: Float)
+
+    private val holds = HashMap<Int, Hold>()
+
+    /** The gadget panel rows, newest first, with the wall-clock time they arrived (for [SignalUi.ageMs]). */
+    private val signalRows = ArrayDeque<Pair<Long, SignalUi>>()
 
     /** The tapped box frozen for the challenge window; null when no challenge is in flight. Written under stateLock. */
     @Volatile
@@ -133,28 +171,31 @@ class IffCoordinator(
             motion.push(gray)
             frameWidth = gray.frameWidth
             frameHeight = gray.frameHeight
-            if (motion.ids.isEmpty() && lock == null) return
+            if (motion.ids.isEmpty() && lock == null && holds.isEmpty()) return
             publishLocked(clock(), null)
         }
     }
 
-    /** The boxes as the user sees them: the motion position when there is one, else the tracker's box. Under stateLock. */
-    private fun publishLocked(now: Long, status: ((StatusUi) -> StatusUi)?) {
-        val transform = if (previewWidth > 0 && previewHeight > 0 && frameWidth > 0 && frameHeight > 0) {
+    /** Frame pixels -> preview pixels for the current sizes (identity until both are known). Under stateLock. */
+    private fun transformLocked(): FrameTransform =
+        if (previewWidth > 0 && previewHeight > 0 && frameWidth > 0 && frameHeight > 0) {
             FrameTransform(frameWidth, frameHeight, previewWidth, previewHeight)
         } else {
             FrameTransform.identity(frameWidth.coerceAtLeast(1), frameHeight.coerceAtLeast(1))
         }
-        val current = lock
-        if (current != null && !current.isActive(now)) {
-            lock = null
-            iffById.remove(current.boxId)
-            // Phase 5 replaces this line with Verdict(UNKNOWN, "no response") on the locked box.
-            eventLog.add(now, "challenge window closed · box ${current.boxId}")
-        }
+
+    /**
+     * The boxes as the user sees them: the motion position when there is one, else the tracker's box; the locked
+     * box and every held verdict are drawn even when the tracker has lost the object. Closes a passed window
+     * (`UNKNOWN · no response`) and drops verdicts whose hold is over first. Under stateLock.
+     */
+    private fun publishLocked(now: Long, status: ((StatusUi) -> StatusUi)?) {
+        expireLocked(now)
+        val transform = transformLocked()
         val live = tracker.tracks
         val keep = live.map { it.id }.toMutableSet()
         lock?.let { keep += it.boxId }
+        keep += holds.keys
         iffById.keys.retainAll(keep)
         motion.retain(keep)
 
@@ -167,6 +208,7 @@ class IffCoordinator(
                 score = track.score,
             )
         }.toMutableList()
+        val liveIds = live.map { it.id }.toSet()
         val lock = lock
         if (lock != null) {
             val seen = live.firstOrNull { it.id == lock.boxId }
@@ -182,14 +224,92 @@ class IffCoordinator(
                 )
             }
         }
+        for ((id, hold) in holds) {
+            if (id in liveIds || id == lock?.boxId) continue
+            val iff = iffById[id] ?: continue
+            uis += TrackUi(id, ObjClass.DRONE, transform.toPreview(motion.box(id)?.box ?: hold.rect), iff, hold.score)
+        }
+        val signal = signalRows.map { (t, row) -> row.copy(ageMs = (now - t).coerceAtLeast(0L)) }
         _state.update { s ->
             s.copy(
                 tracks = uis,
                 status = status?.invoke(s.status) ?: s.status,
+                signal = signal,
                 events = eventLog.snapshot(),
             )
         }
     }
+
+    /** A passed window becomes `UNKNOWN · no response` on the locked box; verdicts past their hold are cleared. */
+    private fun expireLocked(now: Long) {
+        val current = lock
+        if (current != null && !current.isActive(now)) {
+            applyVerdictLocked(now, current, IffState.Verdict(VerdictKind.UNKNOWN, NO_RESPONSE, null, null, null), null, emptyList())
+        }
+        val held = holds.entries.iterator()
+        while (held.hasNext()) {
+            val (id, hold) = held.next()
+            if (now >= hold.until) {
+                held.remove()
+                if (iffById[id] is IffState.Verdict) iffById.remove(id)
+            }
+        }
+    }
+
+    /**
+     * Puts [verdict] on the locked box [forLock], releases the lock, holds the verdict for [VERDICT_HOLD_MS] and
+     * writes the gadget panel row and the structured event row. [answer] is null when nothing answered. Under
+     * stateLock; the caller publishes.
+     */
+    private fun applyVerdictLocked(
+        now: Long,
+        forLock: BoxLock,
+        verdict: IffState.Verdict,
+        answer: SignalEvent.Answer?,
+        notes: List<String>,
+    ) {
+        val id = forLock.boxId
+        val liveTrack = tracker.tracks.firstOrNull { it.id == id }
+        val rect = motion.box(id)?.box ?: liveTrack?.box ?: forLock.rect
+        val score = liveTrack?.score ?: lockScore
+        lock = null
+        pending = null
+        iffById[id] = verdict
+        holds[id] = Hold(rect, now + VERDICT_HOLD_MS, score)
+
+        signalRows.addFirst(now to SignalUi(verdict.droneId, verdict.kind, verdict.reason, verdict.rssiDbm, verdict.roundTripMs, 0L))
+        while (signalRows.size > MAX_SIGNAL_ROWS) signalRows.removeLast()
+
+        val fake = answer?.source == SignalKind.FAKE
+        val parts = ArrayList<String>(10)
+        parts += verdict.kind.name
+        (verdict.reason ?: verdict.droneId)?.let { parts += it }
+        parts += "box $id"
+        verdict.roundTripMs?.let { parts += "rtt $it ms" }
+        if (answer != null) {
+            parts += "gadget ${answer.responseMs} ms"
+            parts += verdict.rssiDbm?.let { "$it dBm" } ?: "RSSI n/a"
+            parts += "nonce ${Redact.nonce(answer.nonce)}"
+        }
+        parts += notes.filter { it.startsWith("phone") }
+        val text = parts.joinToString(" · ") + if (fake) " (fake)" else ""
+        eventLog.add(
+            EventUi(
+                t = now,
+                text = text,
+                trackId = id,
+                cls = ObjClass.DRONE,
+                score = score,
+                box = transformLocked().toPreview(rect),
+                verdict = verdict.kind,
+                reason = verdict.reason,
+                droneId = verdict.droneId,
+                rssiDbm = verdict.rssiDbm,
+                roundTripMs = verdict.roundTripMs,
+            ),
+        )
+    }
+
     /** Appends an event row and publishes it. */
     fun log(text: String) {
         eventLog.add(clock(), text)
@@ -202,21 +322,27 @@ class IffCoordinator(
     }
 
     /**
-     * A tap on box [boxId] (main thread): step 1 of the class KDoc. Locks a live DRONE track for
+     * A tap on box [boxId] (main thread): steps 1-2 of the class KDoc. Locks a live DRONE track for
      * [BoxLock.WINDOW_MS], marks it [IffState.Challenged], logs `challenge · box <id>` and publishes at once, so the
-     * ring changes on the tap and not on the next tick. Ignored while another lock is active, and for a person or an
-     * unknown id. Steps 2-3 (signal, re-checks, verdict) are Phase 5.
+     * ring changes on the tap and not on the next tick; then runs the challenge on [scope]. Ignored while another
+     * challenge is in flight, while this box still shows its verdict, and for a person or an unknown id.
      */
     fun challenge(boxId: Int) {
+        val req: ChallengeRequest
+        val seq: Long
+        val until: Long
         synchronized(stateLock) {
             val now = clock()
-            val previous = lock
-            if (previous?.isActive(now) == true) return
+            expireLocked(now)
+            if (lock != null || boxId in holds) return
             val track = tracker.tracks.firstOrNull { it.id == boxId && it.cls == ObjClass.DRONE } ?: return
-            if (previous != null) iffById.remove(previous.boxId) // expired, not yet cleared by a tick
-            lock = BoxLock(boxId, motion.box(boxId)?.box ?: track.box, now + BoxLock.WINDOW_MS)
+            until = now + BoxLock.WINDOW_MS
+            lock = BoxLock(boxId, motion.box(boxId)?.box ?: track.box, until)
             lockScore = track.score
-            iffById[boxId] = IffState.Challenged(until = now + BoxLock.WINDOW_MS)
+            seq = ++seqCounter
+            req = ChallengeRequest(boxId, challengerId(), now / 1000L)
+            pending = Pending(seq, req)
+            iffById[boxId] = IffState.Challenged(until = until)
             eventLog.add(now, "challenge · box $boxId")
             _state.update { s ->
                 s.copy(
@@ -225,11 +351,73 @@ class IffCoordinator(
                 )
             }
         }
+        scope.launch { runChallenge(seq, req, until) }
+    }
+
+    /** Steps 2-3 off the main thread: send, wait for the answer inside the window, hand it to [onAnswer]. */
+    private suspend fun runChallenge(seq: Long, req: ChallengeRequest, until: Long) {
+        val t0 = elapsedMillis()
+        try {
+            val answer = withTimeoutOrNull((until - clock()).coerceAtLeast(1L)) {
+                signalSource.challenge(req)
+                    .onEach { if (it is SignalEvent.Status) log(Redact.line(it.text, max = 120)) }
+                    .firstOrNull { it is SignalEvent.Answer } as SignalEvent.Answer?
+            }
+            if (answer != null) {
+                onAnswer(seq, answer, (elapsedMillis() - t0).coerceAtLeast(0L))
+                return
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: GadgetUnavailableException) {
+            onFailure(seq, e.reason)
+            return
+        } catch (e: Exception) {
+            log("signal error · box ${req.boxId} · ${e.javaClass.simpleName}")
+            onFailure(seq, LINK_ERROR)
+            return
+        }
+        // Nothing answered (a silent source completes at once): the window closes on the clock, here or on a tick.
+        val left = until - clock()
+        if (left > 0) delay(left + 1)
+        synchronized(stateLock) { publishLocked(clock(), null) }
+    }
+
+    /** The answer to challenge [seq], [roundTripMs] measured on the phone; dropped (and logged) if no longer open. */
+    private fun onAnswer(seq: Long, answer: SignalEvent.Answer, roundTripMs: Long) {
+        synchronized(stateLock) {
+            val now = clock()
+            val open = pending?.takeIf { it.seq == seq }
+            val current = lock
+            if (open == null || current == null || !current.isActive(now)) {
+                expireLocked(now)
+                reChecks.check(answer, roundTripMs) // the nonce is spent even when the answer comes too late
+                eventLog.add(now, "late answer ignored · ${answer.verdict} · nonce ${Redact.nonce(answer.nonce)} · rtt $roundTripMs ms")
+                publishLocked(now, null)
+                return
+            }
+            val result = reChecks.check(answer, roundTripMs)
+            val verdict = IffState.Verdict(result.verdict, result.reason, answer.droneId, answer.rssiDbm, roundTripMs)
+            applyVerdictLocked(now, current, verdict, answer, result.notes)
+            publishLocked(now) { st -> answer.rssiDbm?.let { st.copy(rssiDbm = it) } ?: st }
+        }
+    }
+
+    /** The source could not run challenge [seq] at all: `UNKNOWN · <reason>` at once. */
+    private fun onFailure(seq: Long, reason: String) {
+        synchronized(stateLock) {
+            val now = clock()
+            val current = lock
+            if (pending?.seq != seq || current == null) return
+            applyVerdictLocked(now, current, IffState.Verdict(VerdictKind.UNKNOWN, reason, null, null, null), null, emptyList())
+            publishLocked(now, null)
+        }
     }
 
     /**
-     * The Reset button (OBS-10): forgets the tracks, the nonce ledger, every verdict, the lock and the event log,
-     * so a rehearsal and the live run start clean. Track ids keep counting up (see [Tracker.reset]).
+     * The Reset button (OBS-10): forgets the tracks, the nonce ledger, every verdict, the lock, the gadget panel
+     * rows and the event log, so a rehearsal and the live run start clean. An answer still in flight is then
+     * dropped as late. Track ids keep counting up (see [Tracker.reset]).
      */
     fun reset() {
         synchronized(stateLock) {
@@ -238,13 +426,26 @@ class IffCoordinator(
             reChecks.reset()
             eventLog.clear()
             iffById.clear()
+            holds.clear()
+            signalRows.clear()
+            pending = null
             lock = null
             _state.update { it.copy(tracks = emptyList(), signal = emptyList(), events = emptyList()) }
         }
     }
 
     fun close() {
+        scope.cancel()
         detector.close()
         signalSource.close()
+    }
+
+    companion object {
+        /** How long a verdict stays drawn before the box is `drone · ?` again. */
+        const val VERDICT_HOLD_MS: Long = 8_000L
+        const val NO_RESPONSE = "no response"
+        const val LINK_ERROR = "link error"
+        const val DEFAULT_CHALLENGER_ID = 7
+        private const val MAX_SIGNAL_ROWS = 20
     }
 }

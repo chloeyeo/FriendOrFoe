@@ -6,6 +6,7 @@ import com.chloeyeo.friendorfoe.detect.Detector
 import com.chloeyeo.friendorfoe.detect.FakeDetector
 import com.chloeyeo.friendorfoe.detect.Frame
 import com.chloeyeo.friendorfoe.detect.ObjClass
+import com.chloeyeo.friendorfoe.signal.FakeMode
 import com.chloeyeo.friendorfoe.signal.FakeSignalSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,7 +28,7 @@ class IffCoordinatorTest {
     @Test
     fun `tick publishes the fake detector's boxes as tracks with stable ids`() {
         var clock = 1_000L
-        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(), clock = { clock })
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(FakeMode.SILENT), clock = { clock })
         assertEquals("fake", coordinator.state.value.status.detectorName)
 
         clock += 180
@@ -46,7 +47,7 @@ class IffCoordinatorTest {
 
     @Test
     fun `tracks are mapped into the preview size`() {
-        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource())
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(FakeMode.SILENT))
         coordinator.setPreviewSize(2560, 1440) // frame 128x72 scaled 20x
         coordinator.tick(frame())
         val person = coordinator.state.value.tracks.single { it.cls == ObjClass.PERSON }
@@ -56,7 +57,7 @@ class IffCoordinatorTest {
 
     @Test
     fun `setStatus publishes modelNote and modelReady without a tick`() {
-        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource())
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(FakeMode.SILENT))
         coordinator.setStatus { it.copy(modelReady = false, modelNote = "model loading… 3 s") }
         val status = coordinator.state.value.status
         assertEquals("model loading… 3 s", status.modelNote)
@@ -66,11 +67,11 @@ class IffCoordinatorTest {
 
     @Test
     fun `offlineProbe value lands in status offline on every tick`() {
-        val online = IffCoordinator(FakeDetector(), FakeSignalSource(), offlineProbe = { false })
+        val online = IffCoordinator(FakeDetector(), FakeSignalSource(FakeMode.SILENT), offlineProbe = { false })
         online.tick(frame())
         assertFalse(online.state.value.status.offline)
 
-        val byDefault = IffCoordinator(FakeDetector(), FakeSignalSource())
+        val byDefault = IffCoordinator(FakeDetector(), FakeSignalSource(FakeMode.SILENT))
         byDefault.tick(frame())
         assertTrue(byDefault.state.value.status.offline)
     }
@@ -78,7 +79,7 @@ class IffCoordinatorTest {
     @Test
     fun `challenge on a drone id locks it and publishes Challenged immediately`() {
         val clock = 1_000L
-        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(), clock = { clock })
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(FakeMode.SILENT), clock = { clock })
         coordinator.tick(frame())
         val id = coordinator.state.value.tracks.single { it.cls == ObjClass.DRONE }.id
 
@@ -98,7 +99,7 @@ class IffCoordinatorTest {
     fun `lock survives a lost detection and is mapped into preview pixels`() {
         var clock = 1_000L
         val detector = ScriptedDetector(ArrayDeque(listOf(listOf(drone(10f, 10f, 50f, 40f)), emptyList())))
-        val coordinator = IffCoordinator(detector, FakeSignalSource(), clock = { clock })
+        val coordinator = IffCoordinator(detector, FakeSignalSource(FakeMode.SILENT), clock = { clock })
         coordinator.setPreviewSize(256, 144) // frame 128x72 -> scale 2
         coordinator.tick(frame())
         val live = coordinator.state.value.tracks.single()
@@ -118,10 +119,10 @@ class IffCoordinatorTest {
     }
 
     @Test
-    fun `lock expires at 10 s`() {
+    fun `lock expires at 10 s into UNKNOWN no response on the frozen box, then the box goes`() {
         var clock = 1_000L
         val detector = ScriptedDetector(ArrayDeque(listOf(listOf(drone(10f, 10f, 50f, 40f)), emptyList())))
-        val coordinator = IffCoordinator(detector, FakeSignalSource(), clock = { clock })
+        val coordinator = IffCoordinator(detector, FakeSignalSource(FakeMode.SILENT), clock = { clock })
         coordinator.setPreviewSize(256, 144)
         coordinator.tick(frame())
         val id = coordinator.state.value.tracks.single().id
@@ -130,9 +131,14 @@ class IffCoordinatorTest {
         clock += 10_001
         coordinator.tick(frame())
 
-        assertTrue(coordinator.state.value.tracks.none { it.id == id })
         assertNull(coordinator.lock)
-        assertTrue(coordinator.state.value.events.first().text.contains("challenge window closed · box $id"))
+        val ui = coordinator.state.value.tracks.single { it.id == id }
+        assertEquals(IffState.Verdict(VerdictKind.UNKNOWN, "no response", null, null, null), ui.iff)
+        assertTrue(coordinator.state.value.events.first().text.startsWith("UNKNOWN · no response · box $id"))
+
+        clock += IffCoordinator.VERDICT_HOLD_MS
+        coordinator.tick(frame())
+        assertTrue(coordinator.state.value.tracks.none { it.id == id })
     }
 
     @Test
@@ -141,7 +147,7 @@ class IffCoordinatorTest {
         val detector = ScriptedDetector(
             ArrayDeque(listOf(listOf(drone(10f, 10f, 30f, 25f), drone(80f, 40f, 110f, 60f)))),
         )
-        val coordinator = IffCoordinator(detector, FakeSignalSource(), clock = { clock })
+        val coordinator = IffCoordinator(detector, FakeSignalSource(FakeMode.SILENT), clock = { clock })
         coordinator.tick(frame())
         val (a, b) = coordinator.state.value.tracks.map { it.id }
 
@@ -156,7 +162,7 @@ class IffCoordinatorTest {
 
     @Test
     fun `challenge on a person id or an unknown id is ignored`() {
-        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(), clock = { 1_000L })
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(FakeMode.SILENT), clock = { 1_000L })
         coordinator.tick(frame())
         val personId = coordinator.state.value.tracks.single { it.cls == ObjClass.PERSON }.id
 
@@ -169,7 +175,7 @@ class IffCoordinatorTest {
 
     @Test
     fun `reset clears tracks nonces and the log`() {
-        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource())
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource(FakeMode.SILENT))
         coordinator.tick(frame())
         val droneId = coordinator.state.value.tracks.single { it.cls == ObjClass.DRONE }.id
         coordinator.challenge(droneId)
