@@ -44,4 +44,11 @@ class LoadKnobsTest {
             ModelDirs.dualFor(files, 160, 224),
         )
     }
+
+    @Test
+    fun `default pair is the drone model at 224 and the person model at 320`() {
+        assertEquals(224, ModelDirs.DEFAULT_DRONE_INPUT)
+        assertEquals(320, ModelDirs.DEFAULT_PERSON_INPUT)
+        assertEquals(File("/x/files", "models/rtdetr_v2_drone_rahul_224").path, ModelDirs.drone(File("/x/files"), ModelDirs.DEFAULT_DRONE_INPUT))
+    }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
 import com.chloeyeo.friendorfoe.detect.LabelMap
+import com.chloeyeo.friendorfoe.detect.ModelDirs
 import com.chloeyeo.friendorfoe.signal.ReChecks
 import java.io.File
 
@@ -18,12 +19,13 @@ class Prefs(context: Context) {
     private val defaultModelDir: String = File(context.filesDir, "models/rtdetr_v2_r18vd").path
 
     /**
-     * The dual detector's snapshots at 320x320 input (the default): `<filesDir>/models/rtdetr_v2_drone_rahul_320`
-     * and `<filesDir>/models/dfine_small_coco_320`, the same weights as the 640 dirs with `preprocessor_config.json`
-     * `size` set to 320x320 (about 4x fewer pixels, so about 3-4x faster per frame).
+     * The dual detector's default snapshots: the drone model at 224x224 input (`<filesDir>/models/rtdetr_v2_drone_rahul_224`)
+     * and the person model at 320x320 (`<filesDir>/models/dfine_small_coco_320`), the same weights as the 640 dirs with
+     * `preprocessor_config.json` `size` changed ([ModelDirs]). Phone A sweep (README "Speed sweep"): drone 2.3-2.7 s at
+     * 320 -> 1.4-1.6 s at 224; the person model stays at 320 because 224 dropped most people in the room shots.
      */
-    private val defaultDroneModelDir: String = File(context.filesDir, "models/rtdetr_v2_drone_rahul_320").path
-    private val defaultPersonModelDir: String = File(context.filesDir, "models/dfine_small_coco_320").path
+    private val defaultDroneModelDir: String = ModelDirs.drone(context.filesDir, ModelDirs.DEFAULT_DRONE_INPUT)
+    private val defaultPersonModelDir: String = ModelDirs.person(context.filesDir, ModelDirs.DEFAULT_PERSON_INPUT)
 
     /** The same two models at their published 640x640 input, for A/B (`--es detector dual640`). */
     private val dual640DroneModelDir: String = File(context.filesDir, "models/rtdetr_v2_drone_rahul").path
@@ -104,7 +106,7 @@ class Prefs(context: Context) {
     val defaultClikaRtConfig: DetectorConfig
         get() = DetectorConfig.ClikaRt(defaultModelDir)
 
-    /** The fresh-install detector: drone specialist + D-FINE person model at 320x320, for the `dual` launch extra. */
+    /** The fresh-install detector: drone specialist at 224x224 + D-FINE person model at 320x320, for the `dual` launch extra. */
     val defaultDualConfig: DetectorConfig
         get() = DetectorConfig.Dual(defaultDroneModelDir, defaultPersonModelDir)
 

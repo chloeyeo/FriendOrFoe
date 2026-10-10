@@ -44,8 +44,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    `LICENSE_SERVER_UNREACHABLE`).
  * 5. Model directory: `filesDir/models/rtdetr_v2_r18vd` (D-04) holding the pushed hub snapshot (`config.json`,
  *    `model.safetensors`, `preprocessor_config.json`); [ClikaRtDetector.open] opens it with `offline = true`. The
- *    default [DualDetector] opens two such snapshots in turn, `filesDir/models/rtdetr_v2_drone_rahul_320` (drones) and
- *    `filesDir/models/dfine_small_coco_320` (people), both at 320x320 input (`--es detector dual640` for 640). There is
+ *    default [DualDetector] opens two such snapshots in turn, `filesDir/models/rtdetr_v2_drone_rahul_224` (drones, 224x224 input) and
+ *    `filesDir/models/dfine_small_coco_320` (people, 320x320 input) (`--es detector dual640` for 640). There is
  *    deliberately no `getExternalFilesDir` fallback: the snapshot already sits in `filesDir` on phone A and a second
  *    path doubles the failure modes.
  * 6. Every refusal becomes a `StatusUi.modelNote` through [noteFor]; branch on code names, never on message text.

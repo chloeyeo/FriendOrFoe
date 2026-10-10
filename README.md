@@ -523,3 +523,41 @@ Logcat: `adb logcat -s FoF` shows `motion F fps median M ms/tick sample S ms gra
 and `tick N ms (D drone + P person) … motion F fps` per detection. Limits: the tracker only translates boxes (no
 scale change between detections), and a drone against flat sky or a flat wall has little texture to match, so its
 ring then waits for the next detection.
+
+### Speed sweep: drone model at 224x224 input (the default now)
+
+Request (Chloe): make drone and person detection much faster; lower image quality is fine. Measured on phone A
+(airplane mode on, Wi-Fi off, 2 runtime threads, phone lying on a grey surface), median per tick over 45-60 s after
+warm-up, with the debug launch extras `clika_device`, `clika_dtype`, `drone_input`, `person_input`, `analysis`
+(see `app/LaunchOptions.kt`). The phone warms up over a session, so the same config varies by about 15 %.
+
+| config (drone / person input, device, dtype) | drone ms | person ms | tick ms | load + warm (drone; person) | notes |
+|---|---|---|---|---|---|
+| 320 / 320, cpu, float32 (old default) | 2311-2710 | 784-887 | 3109-3589 | 2.4 s + 3.1 s; 0.6 s + 0.8 s | |
+| 320 / 320, cpu, float16 | 2847 | 941 | 3787 | 1.9 s + 3.0 s; 0.6 s + 1.0 s | slower than float32 on this CPU |
+| 320 / 320, `vulkan:0` | - | - | - | - | `BACKEND_NOT_LOADED` ("not shipped in this install"), falls back to cpu |
+| 320 / 320, `vulkan:0`, native libs extracted | 15000 | 3520 | 18500 | 10.2 s + 17.5 s; 2.3 s + 3.6 s | loads on the Mali-G52, about 6x slower than the CPU |
+| 320 / 320, `vulkan:0` + float16, libs extracted | 13826 | 3033 | 16860 | 10.8 s + 17.1 s; 2.7 s + 3.2 s | still about 5x slower |
+| 256 / 320, cpu | 1639 | 783 | 2428 | 2.4 s + 1.8 s; 0.7 s + 0.8 s | |
+| **224 / 320, cpu (new default)** | **1512** | **835** | **2333** | 1.9 s + 1.6 s; 0.5 s + 0.9 s | |
+| 224 / 256, cpu | 1596 | 720 | 2313 | | |
+| 224 / 224, cpu | 1378-1572 | 592-647 | 2183-2218 | 0.8 s + 1.8 s; 0.6 s + 0.7 s | person model loses most people (below) |
+| 256 / 224, cpu | 1843-1890 | 627-651 | 2483-2537 | | |
+| 224 / 224, cpu, analysis 640x360 | 1559 | 635 | 2198 | | the frame size does not matter (the model resizes) |
+| 224 / 224, `num_queries` 300 -> 100 | 1312 | 480 | 1792 | | faster, but drone scores drop (0.80 -> 0.61) and 1 more photo missed |
+
+Accuracy on the laptop (`clikart-cli`, same snapshots): the drone model finds 6/6 test drone photos at 320, 5/6 at
+256 and 4/6 at 224 at the app's 0.30 drone floor (5/6 at 224 with 0.25). The person model on five room screenshots
+(people with score >= 0.5): 320 finds 3, 1, 7, 4, 3; 224 finds 0, 1, 1, 1, 2. So the default pairs the drone model at
+224 with the person model at 320. Vulkan and float16 stay off on this phone.
+
+Phone setup for the extra sizes (same weights, only `preprocessor_config.json` `size` differs), for N = 224 (and
+256/160 for the sweep):
+
+```bash
+adb push <sw_drone_N>/. /data/local/tmp/models/rtdetr_v2_drone_rahul_N/
+adb shell run-as com.chloeyeo.friendorfoe sh -c 'mkdir -p files/models/rtdetr_v2_drone_rahul_N && cp /data/local/tmp/models/rtdetr_v2_drone_rahul_N/* files/models/rtdetr_v2_drone_rahul_N/'
+```
+
+A phone that already stored the 320 pair keeps it until it is launched once with `--es detector dual` (which stores
+the new default), or with `--ei drone_input 320` for one run.

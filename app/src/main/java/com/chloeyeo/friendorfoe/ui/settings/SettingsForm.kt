@@ -169,7 +169,7 @@ data class SettingsForm(
         const val DEFAULT_SERVE_URL = "http://192.168.43.100:8000"
 
         /** Fallbacks for the dual detector's two snapshot dirs (Prefs' defaults on phone A, `filesDir/models/...`). */
-        const val DEFAULT_DUAL_DRONE_DIR = "/data/user/0/com.chloeyeo.friendorfoe/files/models/rtdetr_v2_drone_rahul_320"
+        const val DEFAULT_DUAL_DRONE_DIR = "/data/user/0/com.chloeyeo.friendorfoe/files/models/rtdetr_v2_drone_rahul_224"
         const val DEFAULT_DUAL_PERSON_DIR = "/data/user/0/com.chloeyeo.friendorfoe/files/models/dfine_small_coco_320"
 
         fun from(v: SettingsValues) = SettingsForm(

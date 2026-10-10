@@ -7,6 +7,11 @@ import java.io.File
  * `vulkan:0`) and the weight [dtype] (`float16`, `bfloat16`, or null for the checkpoint's own), both handed to
  * `VisionLoadOptions`. The debug launch extras `clika_device` / `clika_dtype` set [current] once per process, before
  * the detector opens; release builds keep the defaults.
+ *
+ * Phone A (Galaxy A06, Mali-G52) sweep: `float16` on the CPU is slower than the checkpoint's float32 (drone 2.85 s vs
+ * 2.31 s at 320); `vulkan:0` is refused with `BACKEND_NOT_LOADED` ("not shipped in this install") while the native
+ * libraries stay inside the APK, and with them extracted (`useLegacyPackaging`) it loads but runs about 6x slower than
+ * the CPU (drone 15 s). Both defaults therefore stay `cpu` / float32.
  */
 data class LoadKnobs(val device: String = DEFAULT_DEVICE, val dtype: String? = DEFAULT_DTYPE) {
     companion object {
@@ -41,7 +46,8 @@ data class LoadKnobs(val device: String = DEFAULT_DEVICE, val dtype: String? = D
  * / [PERSON_INPUTS]; an unknown size is ignored.
  */
 object ModelDirs {
-    const val DEFAULT_DRONE_INPUT = 320
+    /** The speed-sweep pick on phone A: drone 224 (fastest size that still finds most drones), person 320. */
+    const val DEFAULT_DRONE_INPUT = 224
     const val DEFAULT_PERSON_INPUT = 320
 
     val DRONE_INPUTS = listOf(320, 256, 224, 160)
