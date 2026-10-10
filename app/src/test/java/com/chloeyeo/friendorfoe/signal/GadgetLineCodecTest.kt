@@ -7,7 +7,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.io.File
 
 class GadgetLineCodecTest {
     private val nonceHex = "00112233445566778899aabbccddeeff"
@@ -99,5 +101,55 @@ class GadgetLineCodecTest {
         assertEquals(0xFF, bytes[15].toInt() and 0xFF)
         assertEquals(nonceHex, GadgetLineCodec.nonceToHex(bytes))
         assertArrayEquals(bytes, GadgetLineCodec.hexToNonce(nonceHex.uppercase()))
+    }
+
+    /** Every JSON line in docs/GADGET_LINK.md: commands equal what the phone encodes, gadget lines parse. */
+    @Test
+    fun `every example line in GADGET_LINK md round trips`() {
+        val doc = listOf(File("../docs/GADGET_LINK.md"), File("docs/GADGET_LINK.md")).firstOrNull { it.isFile }
+        assumeTrue("docs/GADGET_LINK.md not found from ${File(".").absolutePath}", doc != null)
+        val lines = doc!!.readLines().map { it.trim() }.filter { it.startsWith("{\"") && it.endsWith("}") }
+            .map { it.replace("<32 hex>", nonceHex) }
+        assertTrue("expected the 6 example lines, got ${lines.size}", lines.size >= 6)
+        var commands = 0
+        var events = 0
+        for (line in lines) {
+            val obj = JSONObject(line)
+            when (obj.optString("cmd")) {
+                "challenge" -> {
+                    val req = ChallengeRequest(obj.getInt("boxId"), obj.getInt("challengerId"), obj.getLong("t"))
+                    assertEquals(obj.asMap(), JSONObject(GadgetLineCodec.encodeChallenge(req)).asMap())
+                    commands++
+                }
+                "status" -> {
+                    assertEquals(obj.asMap(), JSONObject(GadgetLineCodec.encodeStatusRequest()).asMap())
+                    commands++
+                }
+                "mode" -> Unit // drone-side bench command, not the phone's
+                else -> {
+                    val event = GadgetLineCodec.parseLine(line)
+                    assertTrue(line, event != null)
+                    if (event is SignalEvent.Answer) {
+                        assertEquals(obj.getString("verdict"), event.verdict.name)
+                        assertEquals(nonceHex, event.nonceHex)
+                        assertEquals(obj.getLong("responseMs"), event.responseMs)
+                        assertEquals(if (obj.isNull("rssiDbm")) null else obj.getInt("rssiDbm"), event.rssiDbm)
+                    }
+                    events++
+                }
+            }
+        }
+        assertEquals(2, commands)
+        assertEquals(4, events)
+    }
+
+    /** android.jar's org.json has no toMap(); compare keys and value texts instead. */
+    private fun JSONObject.asMap(): Map<String, String> = keys().asSequence().associateWith { get(it).toString() }
+
+    @Test
+    fun `an encoded challenge parses back to the same request`() {
+        val req = ChallengeRequest(boxId = 12, challengerId = 65_535, t = 1_760_000_123L)
+        val obj = JSONObject(GadgetLineCodec.encodeChallenge(req))
+        assertEquals(req, ChallengeRequest(obj.getInt("boxId"), obj.getInt("challengerId"), obj.getLong("t")))
     }
 }
