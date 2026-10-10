@@ -50,10 +50,10 @@ class LineSplitterTest {
     }
 
     @Test
-    fun `the default limit is 512 bytes`() {
+    fun `the default limit is 1024 bytes, room for the reader STATUS line`() {
         val s = LineSplitter()
-        assertEquals(listOf(Piece.Line("x".repeat(512))), s.feed("x".repeat(512) + "\n"))
-        assertTrue(s.feed("y".repeat(513) + "\n").single() is Piece.Oversize)
+        assertEquals(listOf(Piece.Line("x".repeat(1024))), s.feed("x".repeat(1024) + "\n"))
+        assertTrue(s.feed("y".repeat(1025) + "\n").single() is Piece.Oversize)
     }
 
     @Test

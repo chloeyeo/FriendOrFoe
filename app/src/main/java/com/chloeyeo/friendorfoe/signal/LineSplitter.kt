@@ -4,7 +4,7 @@ import java.io.ByteArrayOutputStream
 
 /**
  * Turns the gadget's byte stream into lines (docs/GADGET_LINK.md framing): UTF-8, terminated by `\n`, a `\r` right
- * before the `\n` is dropped, at most [maxBytes] bytes per line (without the terminator). Bytes arrive in arbitrary
+ * before the `\n` is dropped, at most [maxBytes] bytes per line (without the terminator; the reader's STATUS line is about 500 bytes, up to 533). Bytes arrive in arbitrary
  * USB chunks, so a line may span several [feed] calls. A line longer than [maxBytes] is discarded up to its `\n`
  * and reported once as [Piece.Oversize], so a runaway console never grows the buffer. Pure, not thread-safe (one
  * reader thread owns it).
@@ -69,7 +69,7 @@ class LineSplitter(private val maxBytes: Int = MAX_LINE_BYTES) {
     }
 
     companion object {
-        const val MAX_LINE_BYTES = 512
+        const val MAX_LINE_BYTES = 1024
         private const val NL = '\n'.code.toByte()
         private const val CR = '\r'.code.toByte()
     }
