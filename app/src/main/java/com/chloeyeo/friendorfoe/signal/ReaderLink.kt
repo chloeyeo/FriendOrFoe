@@ -26,7 +26,8 @@ import java.security.SecureRandom
  *   the previous query's start, even after FRIEND), writes `QUERY <request_id>`, and ends with exactly one
  *   [SignalEvent.Answer] mapped by [ReaderVerdicts], or a [GadgetUnavailableException]: ACK refused -> its reason;
  *   no ACK in 2 s -> `gadget no ack`; no RESULT 5 s after the ACK -> `no response` (one `STATUS` at 3.5 s first,
- *   whose `last_result` recovers a lost RESULT).
+ *   whose `last_result` recovers a lost RESULT; its round trip is then the reader's `response_ms` / `elapsed_ms`,
+ *   not the STATUS arrival time).
  * - **Attribution**: the request id is `<launch prefix>-<seq>-<boxId>` (at most 32 of `[A-Za-z0-9_-]`), unique
  *   across app restarts, so the reader never takes it for a duplicate. Only lines carrying the open query's id reach
  *   it; a RESULT for one of this phone's earlier ids goes to [Listener.onStaleAnswer] and is never drawn.
@@ -212,6 +213,7 @@ class ReaderLink(
         var ackedAt = -1L
         var result: ReaderEvent.Result? = null
         var resultAt = 0L
+        var recovered = false
         var recoverySent = false
         var nonce: ByteArray? = null
         var droneId: Int? = null
@@ -222,7 +224,11 @@ class ReaderLink(
             if (r != null) {
                 if (nonce != null || now >= resultAt + timing.nonceGraceMs) {
                     if (nonce == null) emit(SignalEvent.Status("reader did not log the challenge nonce"))
-                    return ReaderVerdicts.answer(r, nonce, droneId, rssi, resultAt - q.writtenAt)
+                    // A recovered result arrived with the STATUS at 3.5 s, not when the reader decided: its round
+                    // trip is the reader's own timing, never the STATUS arrival time.
+                    val roundTrip = if (recovered) r.responseMs ?: r.elapsedMs else resultAt - q.writtenAt
+                    if (recovered) emit(SignalEvent.Status("round trip from the reader's timing · $roundTrip ms"))
+                    return ReaderVerdicts.answer(r, nonce, droneId, rssi, roundTrip)
                 }
             } else {
                 if (!recoverySent && now >= q.writtenAt + timing.recoveryStatusMs) {
@@ -271,6 +277,7 @@ class ReaderLink(
                     if (result == null && last != null && last.requestId == q.id) {
                         // STATUS always marks last_result replay:true; for this query's own id it is the verdict.
                         result = last.copy(replay = false)
+                        recovered = true
                         resultAt = clock()
                         if (ackedAt < 0) ackedAt = resultAt
                         emit(SignalEvent.Status("result recovered from STATUS"))

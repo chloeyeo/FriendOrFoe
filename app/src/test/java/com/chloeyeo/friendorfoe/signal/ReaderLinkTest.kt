@@ -235,6 +235,8 @@ class ReaderLinkTest {
         assertEquals(VerdictKind.FRIEND, a.verdict)
         assertEquals("44ad3f50c8539c3d2121b4cb9e7e1e25", a.nonceHex)
         assertTrue(out.statusTexts.contains("result recovered from STATUS"))
+        assertEquals("the reader's response_ms, not the STATUS arrival", 460L, a.linkRoundTripMs)
+        assertTrue(out.statusTexts.contains("round trip from the reader's timing · 460 ms"))
     }
 
     @Test

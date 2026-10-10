@@ -130,7 +130,8 @@ box N ignored` and never drawn.
 - **Nonce ledger**: a nonce seen before → `FOE · replayed nonce` (the reader's TX_CHALLENGE nonce). When the
   reader's log line carrying it was lost the check is skipped with a note.
 - **Round trip**: phone clock from the QUERY write to the RESULT line, and the reader's `response_ms`, both within
-  2.5 s → else `FOE · late response`. (The reader itself accepts answers up to 2999 ms; captured FRIENDs were 19-910 ms.)
+  2.5 s → else `FOE · late response`. A result recovered from `STATUS last_result` arrived with the 3.5 s STATUS,
+  not when the reader decided, so its round trip is the reader's own `response_ms` (else `elapsed_ms`). (The reader itself accepts answers up to 2999 ms; captured FRIENDs were 19-910 ms.)
 - **RSSI**: Ihan's reader reports none, so the -70 dBm gate is skipped with a note (`RSSI n/a` in the event log).
   With **Strict physical** on in Settings, a missing RSSI is `FOE · signal mismatch`, so leave it off with this
   reader. An `rssi_dbm` / `rssi` field is read automatically if a later firmware adds one.

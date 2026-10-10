@@ -58,11 +58,11 @@ class IffCoordinatorReaderTest {
     private fun Rig.droneId(): Int = c.state.value.tracks.first { it.cls == ObjClass.DRONE }.id
 
     /** Taps the drone and waits (real time) until its ring shows a verdict. */
-    private fun Rig.tap(script: List<String>?): IffState.Verdict {
+    private fun Rig.tap(script: List<String>?, waitMs: Long = 3_000): IffState.Verdict {
         script?.let { port.queries += it }
         val id = droneId()
         c.challenge(id)
-        val deadline = System.currentTimeMillis() + 3_000
+        val deadline = System.currentTimeMillis() + waitMs
         while (c.state.value.tracks.first { it.id == id }.iff !is IffState.Verdict && System.currentTimeMillis() < deadline) {
             Thread.sleep(5)
         }
@@ -134,6 +134,21 @@ class IffCoordinatorReaderTest {
         assertTrue(texts.contains("gadget: KEY: stored"))
         assertTrue(texts.contains("gadget dropped 3 packet log lines"))
         assertTrue(texts.contains("gadget result for another request ignored · FRIEND NONE"))
+    }
+
+    @Test
+    fun `a FRIEND recovered from STATUS at 3_5 s is timed by the reader, not by the STATUS arrival`() {
+        val r = rig()
+        val f = Fixtures.lines("friend.txt")
+        r.port.statusScript = Fixtures.lines("status_last_result.txt")
+        // ACK and TX_CHALLENGE, then the RESULT line is lost; the real 3.5 s recovery STATUS brings it back.
+        val v = r.tap(listOf(f[0], f[2]), waitMs = 6_000)
+        assertEquals(r.tag(), VerdictKind.FRIEND, v.kind)
+        assertNull(v.reason)
+        assertEquals(460L, v.roundTripMs)
+        assertEquals(listOf("QUERY e2e00001-1-${r.droneId()}"), r.port.queryLines)
+        val texts = r.c.state.value.events.map { it.text }
+        assertTrue(texts.toString(), texts.contains("result recovered from STATUS"))
     }
 
     @Test
