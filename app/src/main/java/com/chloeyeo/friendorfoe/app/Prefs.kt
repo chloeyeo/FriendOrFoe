@@ -37,7 +37,7 @@ class Prefs(context: Context) {
      * value still falls back to `fake` through [DetectorConfig.decode].
      */
     var detectorConfig: DetectorConfig
-        get() = sp.getString(KEY_DETECTOR, null)?.let(DetectorConfig::decode) ?: defaultDualConfig
+        get() = sp.getString(KEY_DETECTOR, null)?.let(DetectorConfig::decode) ?: defaultDroneOnlyConfig
         set(value) = sp.edit().putString(KEY_DETECTOR, value.encode()).apply()
 
     /** This observer's id (2 bytes on the wire). */
@@ -106,9 +106,13 @@ class Prefs(context: Context) {
     val defaultClikaRtConfig: DetectorConfig
         get() = DetectorConfig.ClikaRt(defaultModelDir)
 
-    /** The fresh-install detector: drone specialist at 224x224 + D-FINE person model at 320x320, for the `dual` launch extra. */
+    /** The drone specialist at 224x224 + the D-FINE person model at 320x320, for the `dual` launch extra. */
     val defaultDualConfig: DetectorConfig
         get() = DetectorConfig.Dual(defaultDroneModelDir, defaultPersonModelDir)
+
+    /** The fresh-install detector: the drone specialist alone at 224x224, no person model (`drone` launch extra). */
+    val defaultDroneOnlyConfig: DetectorConfig
+        get() = DetectorConfig.Dual(defaultDroneModelDir, null)
 
     /** The same pair at 640x640, for the `dual640` launch extra (A/B against the 320 default). */
     val dual640Config: DetectorConfig

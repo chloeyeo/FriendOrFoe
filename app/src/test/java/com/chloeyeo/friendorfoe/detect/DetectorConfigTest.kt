@@ -26,8 +26,21 @@ class DetectorConfigTest {
 
     @Test
     fun `malformed dual falls back to fake`() {
-        for (s in listOf("dual:", "dual:/a", "dual:/a|", "dual:|/b", "dual:/a|/b|/c")) {
+        // "dual:/a|" (empty person dir) is drone-only, see the drone-only round-trip test.
+        for (s in listOf("dual:", "dual:/a", "dual:|/b", "dual:/a|/b|/c")) {
             assertEquals(s, DetectorConfig.Fake, DetectorConfig.decode(s))
         }
+    }
+
+    @Test
+    fun `drone-only dual config round-trips with an empty person dir`() {
+        val c = DetectorConfig.Dual("/data/files/models/rtdetr_v2_drone_rahul_224", null)
+        assertEquals("dual:/data/files/models/rtdetr_v2_drone_rahul_224|", c.encode())
+        assertEquals(c, DetectorConfig.decode(c.encode()))
+    }
+
+    @Test
+    fun `dual without a drone dir is unreadable`() {
+        assertEquals(DetectorConfig.Fake, DetectorConfig.decode("dual:|/x/person"))
     }
 }

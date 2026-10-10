@@ -79,7 +79,10 @@ class SettingsFormTest {
         val f = SettingsForm.from(dual)
         assertEquals(DetectorKind.DUAL, f.detectorKind)
         assertEquals(SettingsForm.Result.Valid(dual), f.parse())
-        val blank = f.copy(personModelDir = " ").parse()
-        assertEquals(true, blank is SettingsForm.Result.Invalid)
+        // An empty person dir is drone-only (the default), not an error; an empty drone dir is.
+        val droneOnly = f.copy(personModelDir = " ").parse()
+        assertEquals(SettingsForm.Result.Valid(values.copy(detector = DetectorConfig.Dual("/data/x/models/drone", null))), droneOnly)
+        val noDrone = f.copy(droneModelDir = " ").parse()
+        assertEquals(true, noDrone is SettingsForm.Result.Invalid)
     }
 }

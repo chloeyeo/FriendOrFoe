@@ -1,7 +1,7 @@
 package com.chloeyeo.friendorfoe.detect
 
 /** How long [DualDetector.open] took per model; [crop] is null when no crop model is configured or it did not open. */
-data class DualTiming(val drone: OpenTiming, val person: OpenTiming, val crop: OpenTiming? = null)
+data class DualTiming(val drone: OpenTiming, val person: OpenTiming?, val crop: OpenTiming? = null)
 
 /**
  * Two single-purpose models on one frame: a drone specialist ([drone], e.g. the RahulKate RT-DETR v2, one class)
@@ -15,14 +15,14 @@ data class DualTiming(val drone: OpenTiming, val person: OpenTiming, val crop: O
  */
 class DualDetector(
     val drone: ModelDetector,
-    val person: ModelDetector,
+    val person: ModelDetector?,
     override val name: String = NAME,
     private val clockNanos: () -> Long = System::nanoTime,
     val cropDrone: ModelDetector? = null,
 ) : LoadableDetector, RoundDetector {
 
-    /** Both models opened. */
-    override val isOpen: Boolean get() = drone.isOpen && person.isOpen
+    /** The drone model (and the person model, when there is one) opened. */
+    override val isOpen: Boolean get() = drone.isOpen && (person?.isOpen ?: true)
 
     /** Inference time of the last frame per model, in milliseconds (0 before the first frame). */
     @Volatile
@@ -49,7 +49,7 @@ class DualDetector(
      */
     fun open(): DualTiming {
         val d = openTagged(drone)
-        val p = openTagged(person)
+        val p = person?.let { openTagged(it) }
         val c = cropDrone?.let { crop ->
             // A missing or broken crop snapshot only costs speed: crop rounds then run on the full-frame drone model.
             try {
@@ -76,7 +76,8 @@ class DualDetector(
         val t0 = clockNanos()
         val drones = if (plan.full) drone.classMap.map(drone.detectRaw(frame)) else plan.crops.mapNotNull { cropDetect(frame, it) }
         val t1 = clockNanos()
-        val people = if (plan.person) person.classMap.map(person.detectRaw(frame)) else emptyList()
+        val p = person
+        val people = if (plan.person && p != null) p.classMap.map(p.detectRaw(frame)) else emptyList()
         val t2 = clockNanos()
         lastDroneMs = (t1 - t0) / 1_000_000
         lastPersonMs = (t2 - t1) / 1_000_000
@@ -93,11 +94,14 @@ class DualDetector(
     }
 
     /** Strip/log text for the last frame, e.g. `drone 6.1 s + person 1.4 s`. */
-    fun timingNote(): String = "${drone.classMap.tag} ${secs(lastDroneMs)} + ${person.classMap.tag} ${secs(lastPersonMs)}"
+    fun timingNote(): String {
+        val p = person ?: return "${drone.classMap.tag} ${secs(lastDroneMs)}"
+        return "${drone.classMap.tag} ${secs(lastDroneMs)} + ${p.classMap.tag} ${secs(lastPersonMs)}"
+    }
 
     override fun close() {
         drone.close()
-        person.close()
+        person?.close()
         cropDrone?.close()
         cropModelOpen = false
     }
@@ -119,6 +123,9 @@ class DualDetector(
     companion object {
         const val NAME = "clikart:drone-rahul+dfine-s"
 
+        /** The strip name when there is no person model. */
+        const val DRONE_ONLY_NAME = "clikart:drone-rahul"
+
         /** The concatenation of both mapped lists, score-descending, deduplicated once. */
         fun merge(droneDetections: List<Detection>, personDetections: List<Detection>, iouThreshold: Float = 0.5f): List<Detection> =
             Dedup.apply((droneDetections + personDetections).sortedByDescending { it.score }, iouThreshold)
@@ -129,12 +136,15 @@ class DualDetector(
          * which input size runs; a `_<N>` drone dir (`_320`, `_256`, …) adds ` @<N>` to the strip name. [cropDir] (optional)
          * is the crop-round drone model, the same weights at a small input ([ClassMap.DRONE_RAHUL_CROP]).
          */
-        fun clikaRt(droneDir: String, personDir: String, cropDir: String? = null): DualDetector = DualDetector(
+        fun clikaRt(droneDir: String, personDir: String?, cropDir: String? = null): DualDetector {
+            val base = if (personDir == null) DRONE_ONLY_NAME else NAME
+            return DualDetector(
             drone = ClikaRtDetector(droneDir, ClassMap.DRONE_RAHUL, "clikart:" + java.io.File(droneDir).name),
-            person = ClikaRtDetector(personDir, ClassMap.DFINE_PERSON, "clikart:" + java.io.File(personDir).name),
-            name = INPUT_SUFFIX.find(java.io.File(droneDir).name)?.let { "$NAME @${it.groupValues[1]}" } ?: NAME,
+            person = personDir?.let { ClikaRtDetector(it, ClassMap.DFINE_PERSON, "clikart:" + java.io.File(it).name) },
+            name = INPUT_SUFFIX.find(java.io.File(droneDir).name)?.let { "$base @${it.groupValues[1]}" } ?: base,
             cropDrone = cropDir?.let { ClikaRtDetector(it, ClassMap.DRONE_RAHUL_CROP, "clikart:" + java.io.File(it).name) },
-        )
+            )
+        }
 
         private val INPUT_SUFFIX = Regex("_([0-9]{3})$")
 

@@ -117,10 +117,10 @@ data class SettingsForm(
             DetectorKind.DUAL -> {
                 val droneDir = droneModelDir.trim()
                 val personDir = personModelDir.trim()
-                if (droneDir.isEmpty() || personDir.isEmpty() || '|' in droneDir || '|' in personDir) {
-                    errors[Field.MODEL_DIR] = "paths of the two pushed snapshots"
+                if (droneDir.isEmpty() || '|' in droneDir || '|' in personDir) {
+                    errors[Field.MODEL_DIR] = "path of the drone snapshot (person snapshot optional: empty = drone only)"
                 }
-                DetectorConfig.Dual(droneDir, personDir)
+                DetectorConfig.Dual(droneDir, personDir.ifEmpty { null })
             }
             DetectorKind.HTTP -> {
                 if (!isHttp(serve)) errors[Field.HTTP_URL] = "http://<laptop-ip>:8000"
@@ -195,7 +195,7 @@ data class SettingsForm(
             demoMode = v.demoMode,
             dashboardBaseUrl = v.dashboardBaseUrl,
             droneModelDir = (v.detector as? DetectorConfig.Dual)?.droneDir ?: DEFAULT_DUAL_DRONE_DIR,
-            personModelDir = (v.detector as? DetectorConfig.Dual)?.personDir ?: DEFAULT_DUAL_PERSON_DIR,
+            personModelDir = (v.detector as? DetectorConfig.Dual)?.let { it.personDir.orEmpty() } ?: DEFAULT_DUAL_PERSON_DIR,
         )
     }
 }

@@ -185,10 +185,31 @@ class DualDetectorTest {
         val d320 = DualDetector.clikaRt("/x/files/models/rtdetr_v2_drone_rahul_320", "/x/files/models/dfine_small_coco_320")
         assertEquals("clikart:drone-rahul+dfine-s @320", d320.name)
         assertEquals("clikart:rtdetr_v2_drone_rahul_320", d320.drone.name)
-        assertEquals("clikart:dfine_small_coco_320", d320.person.name)
+        assertEquals("clikart:dfine_small_coco_320", d320.person?.name)
         assertEquals("clikart:drone-rahul+dfine-s @224", DualDetector.clikaRt("/x/rtdetr_v2_drone_rahul_224", "/x/dfine_small_coco_256").name)
         val d640 = DualDetector.clikaRt("/x/files/models/rtdetr_v2_drone_rahul", "/x/files/models/dfine_small_coco")
         assertEquals("clikart:drone-rahul+dfine-s", d640.name)
         assertEquals("clikart:rtdetr_v2_drone_rahul", d640.drone.name)
+    }
+
+    @Test
+    fun `drone only never touches a person model and is open with the drone model alone`() {
+        val drone = FakeModel(ClassMap.DRONE_RAHUL, listOf(RawDetection(0L, 0.6f, droneBox, "drone")))
+        val d = DualDetector(drone, person = null)
+        assertFalse(d.isOpen)
+        val timing = d.open()
+        assertTrue(d.isOpen)
+        assertEquals(null, timing.person)
+        assertEquals(listOf(Detection(ObjClass.DRONE, 0.6f, droneBox)), d.detectRound(frame, RoundPlan.FULL))
+        assertEquals(1, drone.frames)
+        d.close()
+        assertTrue(drone.closed)
+    }
+
+    @Test
+    fun `the drone-only production detector has no person model and its own name`() {
+        val d = DualDetector.clikaRt("/x/files/models/rtdetr_v2_drone_rahul_224", null)
+        assertEquals(null, d.person)
+        assertEquals("clikart:drone-rahul @224", d.name)
     }
 }

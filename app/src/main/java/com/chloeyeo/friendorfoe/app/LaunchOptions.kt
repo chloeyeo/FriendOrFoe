@@ -93,7 +93,8 @@ data class LaunchOptions(
             intent.getStringExtra("person_model")?.trim()?.let { name ->
                 val base = (app.detectorOverride ?: app.prefs.detectorConfig) as? DetectorConfig.Dual
                 if (base != null && ModelDirs.isPlainName(name)) {
-                    app.detectorOverride = base.copy(personDir = File(File(base.personDir).parentFile, name).path)
+                    val parent = File(base.personDir ?: base.droneDir).parentFile
+                    app.detectorOverride = base.copy(personDir = File(parent, name).path)
                     Log.i(TAG, "launch extra person_model -> ${app.detectorOverride?.encode()}")
                 } else {
                     Log.w(TAG, "launch extra person_model ignored (needs the dual detector and a plain dir name)")
@@ -131,12 +132,13 @@ data class LaunchOptions(
                 "fake" -> DetectorConfig.Fake
                 "clikart" -> app.prefs.defaultClikaRtConfig
                 "dual" -> app.prefs.defaultDualConfig
+                "drone" -> app.prefs.defaultDroneOnlyConfig
                 "dual640" -> app.prefs.dual640Config
                 else -> when (val d = DetectorConfig.decode(value)) {
                     is DetectorConfig.ClikaRt ->
                         if (inAppStorage(app, d.modelDir)) d else null.also { Log.w(TAG, "detector extra ignored: dir outside app storage") }
                     is DetectorConfig.Dual ->
-                        if (inAppStorage(app, d.droneDir) && inAppStorage(app, d.personDir)) d
+                        if (inAppStorage(app, d.droneDir) && (d.personDir == null || inAppStorage(app, d.personDir))) d
                         else null.also { Log.w(TAG, "detector extra ignored: dir outside app storage") }
                     is DetectorConfig.Http ->
                         if (BuildConfig.ALLOW_HTTP_DETECTOR && d.baseUrl.startsWith("http://")) d
