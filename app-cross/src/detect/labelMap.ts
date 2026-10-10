@@ -12,8 +12,8 @@ import type { ObjClass } from '../core/types';
  *
  * The native app maps 14 bird to DRONE; this app keeps birds apart so they are shown but never challenged.
  * Drones are small and rare in COCO, so the RT-DETR floor is low (0.28); person stays at 0.5; birds share the drone
- * floor. The iPhone build defaults the drone floor to 0.6 (app/settings.ts), where FofDrone keeps 12 of 13 real drone
- * photos and fires on 4 of 40 drone-free COCO images (13 of 40 at 0.3).
+ * floor. The iPhone build defaults the drone floor to 0.78 (app/settings.ts), where FofDrone keeps 9 of 13 real drone
+ * photos and fires on 1 of 40 drone-free COCO images, a real airplane (4 of 40 at 0.6, 13 of 40 at 0.3).
  */
 export const DEFAULT_PERSON_THRESHOLD = 0.5;
 export const DEFAULT_DRONE_THRESHOLD = 0.28;

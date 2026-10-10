@@ -134,13 +134,15 @@ a VTOL fixed-wing) and 40 drone-free COCO val2017 images:
 
 | Detector | Drones found | Drone-free images that fired |
 |---|---|---|
-| FofDrone at 0.6 (used) | 12/13 | 4/40 (a small potted plant, a real airplane, a bat and a skateboard in the air) |
+| FofDrone at 0.78 (used) | 9/13 | 1/40 (a real airplane) |
+| FofDrone at 0.6 | 12/13 | 4/40 (a small potted plant, a real airplane, a bat and a skateboard in the air) |
 | FofDrone at 0.3 | 12/13 | 13/40 |
 | TomSmail/drone-yolo-v1 at 0.6 | 8/13 | 6/40 |
 | COCO airplane/kite proxy at 0.5 | 8/13 | 1/40, and none of the drones FofDrone missed |
 | flying-objects YOLOv8m (rendered sky scenes) | 0/13 | it called every real drone an "airplane" |
 
-On top of the 0.6 floor, a drone is drawn only once it has been matched in two frames. Frames come every 0.5 s on
+At 0.6 the phone still drew drones on everyday objects, so the floor is 0.78. On top of it, a drone is drawn
+only once it has been matched in two frames. Frames come every 0.5 s on
 the iPhone, so a one-frame false box never shows. Settings → Drone threshold trades misses for false drones.
 Birds are a class of their own in this
 app (`BIRD`): drawn, logged, never challengeable. The native app still counts COCO bird as a drone proxy.

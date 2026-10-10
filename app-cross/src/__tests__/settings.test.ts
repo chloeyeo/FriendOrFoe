@@ -9,10 +9,10 @@ describe('settings', () => {
     expect(sanitize(null)).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('moves schema-1 iPhone settings to the Core ML defaults once', () => {
-    const old = sanitize({ intervalMs: 1000, droneThreshold: 0.28 });
-    expect(old).toMatchObject({ intervalMs: 500, droneThreshold: 0.6 });
-    const chosen = sanitize({ intervalMs: 1000, droneThreshold: 0.28, schema: 2 });
-    expect(chosen).toMatchObject({ intervalMs: 1000, droneThreshold: 0.28 });
+  it('moves older iPhone settings to the current defaults once', () => {
+    expect(sanitize({ intervalMs: 1000, droneThreshold: 0.28 })).toMatchObject({ intervalMs: 500, droneThreshold: 0.78 });
+    expect(sanitize({ intervalMs: 1000, droneThreshold: 0.6, schema: 2 })).toMatchObject({ intervalMs: 1000, droneThreshold: 0.78 });
+    expect(sanitize({ droneThreshold: 0.65, schema: 2 })).toMatchObject({ droneThreshold: 0.65 }); // a chosen value stays
+    expect(sanitize({ intervalMs: 1000, droneThreshold: 0.6, schema: 3 })).toMatchObject({ intervalMs: 1000, droneThreshold: 0.6 });
   });
 });

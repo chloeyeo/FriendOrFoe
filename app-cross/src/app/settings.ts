@@ -37,8 +37,14 @@ export interface Settings {
   strictPhysical: boolean;
 }
 
-/** FofDrone's floor (see detect/labelMap.ts): 12/13 real drones kept, 4/40 drone-free images still fire. */
-const IOS_DRONE_THRESHOLD = 0.6;
+/**
+ * FofDrone's floor (see detect/labelMap.ts): at 0.78 it keeps 9/13 real drone photos and fires on 1/40 drone-free
+ * images (a real airplane); at 0.6 it kept 12/13 but also boxed a potted plant, a bat and a skateboard, which
+ * showed up on the phone too.
+ */
+const IOS_DRONE_THRESHOLD = 0.78;
+/** The iPhone default of schema 2, moved up to IOS_DRONE_THRESHOLD by schema 3. */
+const SCHEMA2_IOS_DRONE_THRESHOLD = 0.6;
 /** The native app's floor for the RahulKate drone model (ClassMap.DRONE_RAHUL). */
 const ANDROID_DRONE_THRESHOLD = 0.3;
 
@@ -63,7 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const KEY = 'fof.settings.v1';
 /** Bumped when a default changes in a way stored settings must follow; see [sanitize]. */
-const SCHEMA = 2;
+const SCHEMA = 3;
 
 /** What this build can run: Android ClikaRT + laptop serve, iPhone Core ML, and everywhere the simulated boxes. */
 export function availableDetectors(): DetectorKind[] {
@@ -90,12 +96,17 @@ export function sanitize(raw: unknown): Settings {
   if (!availableDetectors().includes(out.detector)) out.detector = DEFAULT_SETTINGS.detector;
   if (!['usb', 'fake'].includes(out.signal) || (out.signal === 'usb' && !FofUsb)) out.signal = 'fake';
   if (!FAKE_MODES.includes(out.fakeMode)) out.fakeMode = 'HONEST';
-  // Schema 1 was saved by builds without the iPhone camera: their 'fake' detector, 1 s interval and 0.28 drone floor
-  // were forced or defaulted, not chosen, so they move to this build's defaults once.
-  if (r.schema !== SCHEMA && Platform.OS === 'ios') {
-    if (out.detector === 'fake') out.detector = DEFAULT_SETTINGS.detector;
-    if (out.intervalMs === 1000) out.intervalMs = DEFAULT_SETTINGS.intervalMs;
-    if (out.droneThreshold === DEFAULT_DRONE_THRESHOLD) out.droneThreshold = DEFAULT_SETTINGS.droneThreshold;
+  // Older schemas on iPhone hold defaults, not choices, so they move to this build's defaults once. Schema 1 (builds
+  // without the iPhone camera): the forced 'fake' detector, 1 s interval and 0.28 drone floor. Schema 2: the 0.6 floor.
+  const schema = typeof r.schema === 'number' ? r.schema : 1;
+  if (schema < SCHEMA && Platform.OS === 'ios') {
+    if (schema < 2) {
+      if (out.detector === 'fake') out.detector = DEFAULT_SETTINGS.detector;
+      if (out.intervalMs === 1000) out.intervalMs = DEFAULT_SETTINGS.intervalMs;
+    }
+    if (out.droneThreshold === DEFAULT_DRONE_THRESHOLD || out.droneThreshold === SCHEMA2_IOS_DRONE_THRESHOLD) {
+      out.droneThreshold = DEFAULT_SETTINGS.droneThreshold;
+    }
   }
   return out;
 }

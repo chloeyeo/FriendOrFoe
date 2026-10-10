@@ -10,7 +10,7 @@ import Vision
  - `FofCoco` (YOLO11n, COCO 80): `person`, `bird`, and the `airplane` / `kite` proxies the native app also uses;
  - `FofDrone` (sapoepsilon/yolov11s-drone-detector, Apache-2.0): `drone`, trained on real drone photos.
 
- FofDrone found 12 of 13 real drone photos (Phantom, Inspire, Mavic, FPV racers, a VTOL fixed-wing) at the 0.6 floor
+ FofDrone found 9 of 13 real drone photos (Phantom, Inspire, Mavic, FPV racers, a VTOL fixed-wing) at the 0.78 floor
  the iPhone build uses (see scripts/export_coreml.py). Both are exported with NMS (`scripts/export-coreml.sh`), so
  Vision returns labelled boxes; rows go to TypeScript with the model tag and label, and `src/detect/labelMap.ts`
  decides the class and the floor.
