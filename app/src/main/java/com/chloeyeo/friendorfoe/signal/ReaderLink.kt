@@ -219,6 +219,7 @@ class ReaderLink(
         var result: ReaderEvent.Result? = null
         var resultAt = 0L
         var recovered = false
+        var duplicate = false
         var recoverySent = false
         var ackProbeSent = false
         var nonce: ByteArray? = null
@@ -267,7 +268,10 @@ class ReaderLink(
                 is ReaderEvent.Ack -> when {
                     ev.accepted -> if (ackedAt < 0) {
                         ackedAt = clock()
-                        if (ev.reason == "DUPLICATE") emit(SignalEvent.Status("reader: duplicate request id"))
+                        if (ev.reason == "DUPLICATE") {
+                            duplicate = true
+                            emit(SignalEvent.Status("reader: duplicate request id"))
+                        }
                     }
                     ackedAt < 0 -> throw GadgetUnavailableException(ReaderVerdicts.ackReason(ev.reason))
                 }
@@ -298,8 +302,9 @@ class ReaderLink(
                     }
                     val last = ev.lastResult
                     if (result == null && last != null && last.requestId == q.id) {
-                        // STATUS always marks last_result replay:true; for this query's own id it is the verdict.
-                        result = last.copy(replay = false)
+                        // STATUS always marks last_result replay:true; for this query's own id it is the verdict,
+                        // unless the reader said DUPLICATE (then it is a stored result: keep replay, fail closed).
+                        result = last.copy(replay = duplicate)
                         recovered = true
                         resultAt = clock()
                         if (ackedAt < 0) ackedAt = resultAt

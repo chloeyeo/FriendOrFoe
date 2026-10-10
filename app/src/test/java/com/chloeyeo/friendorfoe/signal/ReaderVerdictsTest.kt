@@ -67,4 +67,9 @@ class ReaderVerdictsTest {
         assertNull(badTag.nonce)
         assertEquals(-60, badTag.rssiDbm)
     }
+
+    @Test
+    fun `a FRIEND without the reader's response time fails closed`() {
+        assertEquals(VerdictKind.UNKNOWN, ReaderVerdicts.map(result("FRIEND", "NONE", responseMs = null)).first)
+    }
 }

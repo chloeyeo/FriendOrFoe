@@ -30,7 +30,8 @@ object ReaderVerdicts {
         // A stored verdict re-sent, not an answer to a fresh nonce: says nothing about the drone in view now,
         // so never FRIEND, and not FOE either (the drone did nothing wrong; the request id was reused).
         r.replay -> VerdictKind.UNKNOWN to STALE_RESULT
-        r.verdict == "FRIEND" && r.reason == "NONE" && r.responseReceived -> VerdictKind.FRIEND to null
+        // A FRIEND needs the reader's own response time too (the firmware always sends it with a received answer).
+        r.verdict == "FRIEND" && r.reason == "NONE" && r.responseReceived && r.responseMs != null -> VerdictKind.FRIEND to null
         r.verdict == "FRIEND" -> VerdictKind.UNKNOWN to INVALID_RESULT
         else -> when (r.reason) {
             "NO_RESPONSE" -> VerdictKind.UNKNOWN to NO_RESPONSE
