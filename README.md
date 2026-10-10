@@ -396,3 +396,38 @@ eval/       10+ test images, ground truth JSON, run_eval.py, gen_vectors.py (JSO
 docs/       PROTOCOL.md, GADGET_LINK.md, PITCH.md (script + Q&A card), DESIGN.md, design/ (mockups, specs)
 .planning/  GSD planning docs (ROADMAP, REQUIREMENTS, research)
 ```
+
+---
+
+## 10. On-device detection numbers and the demo target (Phase 2)
+
+### Checkpoint 1 — bring-up on phone A in airplane mode (H2)
+
+Phone A = Samsung Galaxy A06 (SM-A065F, Android 16, arm64), USB-attached, airplane mode on
+(`settings get global airplane_mode_on` = `1`), launched with
+`am start -S -n com.chloeyeo.friendorfoe/.MainActivity --ez demo false --ez dump_frame true --ez log_raw true`.
+Captured with `adb logcat -s ClikaRT FoF` (75 s).
+
+| Fact | Value |
+|------|-------|
+| Date / time | 2026-10-10 17:33 phone time (08:33 UTC) |
+| Build commit | `eff4bd5` (debug APK, `:app:installDebug --offline`) |
+| License outcome | accepted (offline license; `runtime up`, no code name) |
+| Model dir check | `files/models/rtdetr_v2_r18vd`: `config.json` 5437, `model.safetensors` 80904640, `preprocessor_config.json` 444; md5 `7037c890ae678aaba18f3555b3acf36d` |
+| First-frame line (verbatim) | `first frame 1280x720 rotation=0 cropRect=Rect(0, 72 - 1280, 648) rowStride=5120 pixelStride=4 format=1` |
+| Runtime line (verbatim) | `runtime up: load 844 ms warm 3853 ms threads 2` (two later cold starts: load 489 / 519 ms, warm 3748 / 3890 ms) |
+| Load | 0.84 s (first start after install), 0.49-0.52 s on later starts |
+| Warm-up | 3853 ms |
+| Threads | 2 (`cpu thread pool: 2 participant(s)`) |
+| Median ms/frame | 3497 ms (18 ticks, min 3335, max 3530) |
+| fps | 0.28-0.29 (CPU, 2 threads, 1280x720; tuning in plan 02-06) |
+| Analysis target | 1280x720 delivered as 1280x720, 16:9, rotation 0, tight rows (rowStride 5120 = 1280*4), no aspect/rotation warning |
+| cropRect | ViewPort crop to the 20:9 screen: rows 72..648 of the frame are visible (= FrameTransform's 1.25 scale, -90 offset for 1600x720) |
+| Parity, asset `parity/scene.png` | phone 3 rows / CLI 3 rows; same label ids in the same order (11 stop sign, 11 stop sign, 29 frisbee); max score delta < 0.001; max box delta < 0.001 px |
+| Parity, live frame | dumped frame was an out-of-focus grey scene: phone 0 rows, CLI 0 rows (trivially equal; re-run on a person scene at checkpoint 2) |
+| Dump colour check | no shearing, no green lines, no stride artefacts; scene is neutral grey, so the channel-order check is inconclusive on this frame |
+| In-process rows on a live scene | yes: tick 3 of the capture logged 20 raw rows (person 0.913 / 0.909 / 0.871, bottle, chair, laptop, cell phone, …) |
+
+### PIT-04 — demo target decision (H3)
+
+_pending checkpoint 2 (plan 02-06)_
