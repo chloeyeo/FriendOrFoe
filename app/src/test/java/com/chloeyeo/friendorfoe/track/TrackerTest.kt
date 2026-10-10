@@ -109,4 +109,61 @@ class TrackerTest {
         assertTrue(tracker.tracks.isEmpty())
         assertNotEquals(id, tracker.update(listOf(drone(100f, 100f, 200f, 180f)))[0].id)
     }
+
+    @Test
+    fun `a drone track stays for 5 s of wall clock after it is lost`() {
+        val tracker = Tracker()
+        val id = tracker.update(listOf(drone(100f, 100f, 200f, 180f)), 1_000L)[0].id
+        assertTrue(tracker.update(emptyList(), 2_000L).isEmpty()) // miss 1
+        tracker.update(emptyList(), 4_000L) // miss 2
+        tracker.update(emptyList(), 5_900L) // miss 3, 4 900 ms since last seen
+        assertEquals(listOf(id), tracker.tracks.map { it.id })
+        assertEquals(3, tracker.tracks.single().misses)
+        tracker.update(emptyList(), 6_100L) // 5 100 ms > 5 000
+        assertTrue(tracker.tracks.isEmpty())
+    }
+
+    @Test
+    fun `a person track stays for about 1,5 s of wall clock`() {
+        val tracker = Tracker()
+        val id = tracker.update(listOf(person(600f, 200f, 760f, 700f)), 1_000L)[0].id
+        tracker.update(emptyList(), 2_400L)
+        assertEquals(listOf(id), tracker.tracks.map { it.id })
+        tracker.update(emptyList(), 2_600L)
+        assertTrue(tracker.tracks.isEmpty())
+    }
+
+    @Test
+    fun `a sticky drone re-detected keeps its id and its last-seen time moves`() {
+        val tracker = Tracker()
+        val id = tracker.update(listOf(drone(100f, 100f, 200f, 180f)), 1_000L)[0].id
+        tracker.update(emptyList(), 3_000L)
+        val back = tracker.update(listOf(drone(104f, 102f, 204f, 182f)), 5_500L)
+        assertEquals(1, back.size)
+        assertEquals(id, back[0].id)
+        assertEquals(0, back[0].misses)
+        assertEquals(5_500L, back[0].lastSeenMillis)
+    }
+
+    @Test
+    fun `the wall-clock update returns only the tracks seen in that call`() {
+        val tracker = Tracker()
+        tracker.update(listOf(drone(100f, 100f, 200f, 180f), person(600f, 200f, 760f, 700f)), 1_000L)
+        val seen = tracker.update(listOf(person(602f, 201f, 762f, 701f), drone(900f, 500f, 1000f, 580f)), 2_000L)
+        assertEquals(2, seen.size)
+        assertTrue(seen.all { it.misses == 0 && it.lastSeenMillis == 2_000L })
+        assertEquals(3, tracker.tracks.size) // the first drone coasts
+    }
+
+    @Test
+    fun `stickiness does not depend on the frame rate`() {
+        val slow = Tracker()
+        slow.update(listOf(drone(100f, 100f, 200f, 180f)), 0L)
+        slow.update(emptyList(), 4_000L) // 0.25 fps: one miss in 4 s
+        val fast = Tracker()
+        fast.update(listOf(drone(100f, 100f, 200f, 180f)), 0L)
+        for (t in 250L..4_000L step 250L) fast.update(emptyList(), t) // 4 fps: 16 misses in 4 s
+        assertEquals(1, slow.tracks.size)
+        assertEquals(1, fast.tracks.size)
+    }
 }
