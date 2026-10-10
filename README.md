@@ -1,5 +1,7 @@
 # FriendOrFoe
 
+On-device drone detection + replay-proof friend-or-foe IFF on ClikaRT. D4D x EDTH Seoul 2026.
+
 Android app that detects drones with the phone camera, on-device and offline (ClikaRT), and runs a
 replay-proof, relay-resistant, radio-silent friend-or-foe check on each detected drone, drawing a green
 ring (`FRIEND · id`) or a red ring (`FOE · reason`) on the exact object in the image. The challenge-response
