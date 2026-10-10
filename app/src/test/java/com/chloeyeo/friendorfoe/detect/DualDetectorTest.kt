@@ -107,4 +107,15 @@ class DualDetectorTest {
             assertEquals("person model: model dir missing: config.json", e.message)
         }
     }
+
+    @Test
+    fun `the production pair is named after its dirs and marks the 320 input`() {
+        val d320 = DualDetector.clikaRt("/x/files/models/rtdetr_v2_drone_rahul_320", "/x/files/models/dfine_small_coco_320")
+        assertEquals("clikart:drone-rahul+dfine-s @320", d320.name)
+        assertEquals("clikart:rtdetr_v2_drone_rahul_320", d320.drone.name)
+        assertEquals("clikart:dfine_small_coco_320", d320.person.name)
+        val d640 = DualDetector.clikaRt("/x/files/models/rtdetr_v2_drone_rahul", "/x/files/models/dfine_small_coco")
+        assertEquals("clikart:drone-rahul+dfine-s", d640.name)
+        assertEquals("clikart:rtdetr_v2_drone_rahul", d640.drone.name)
+    }
 }

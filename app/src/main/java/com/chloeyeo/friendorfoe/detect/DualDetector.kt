@@ -78,10 +78,15 @@ class DualDetector(
         fun merge(droneDetections: List<Detection>, personDetections: List<Detection>, iouThreshold: Float = 0.5f): List<Detection> =
             Dedup.apply((droneDetections + personDetections).sortedByDescending { it.score }, iouThreshold)
 
-        /** The production pair: the RahulKate drone RT-DETR v2 in [droneDir], D-FINE S (COCO) in [personDir]. */
+        /**
+         * The production pair: the RahulKate drone RT-DETR v2 in [droneDir], D-FINE S (COCO) in [personDir]. The
+         * inner names are the directory names (`clikart:rtdetr_v2_drone_rahul_320`), so the `runtime up` line says
+         * which input size runs; a `_320` drone dir adds ` @320` to the strip name.
+         */
         fun clikaRt(droneDir: String, personDir: String): DualDetector = DualDetector(
-            drone = ClikaRtDetector(droneDir, ClassMap.DRONE_RAHUL, "clikart:rtdetr_v2_drone_rahul"),
-            person = ClikaRtDetector(personDir, ClassMap.DFINE_PERSON, "clikart:dfine_small_coco"),
+            drone = ClikaRtDetector(droneDir, ClassMap.DRONE_RAHUL, "clikart:" + java.io.File(droneDir).name),
+            person = ClikaRtDetector(personDir, ClassMap.DFINE_PERSON, "clikart:" + java.io.File(personDir).name),
+            name = if (droneDir.trimEnd('/').endsWith("_320")) "$NAME @320" else NAME,
         )
 
         private fun secs(ms: Long): String = "%.1f s".format(java.util.Locale.US, ms / 1000.0)
