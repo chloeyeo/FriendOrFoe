@@ -1,0 +1,49 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.chloeyeo.friendorfoe.cross.fof'
+version = '0.1.0'
+
+// The ClikaRT license credential, embedded at build time and never committed (the native app's pattern):
+// Gradle property `clikaRtLicenseFile` (written into android/gradle.properties by plugins/withFofAndroid.js from the
+// repo's local.properties `clika.runtimeLicenseFile`) or env CLIKA_RT_LICENSE_FILE; the file's first non-blank line
+// rides BuildConfig.CLIKA_RT_LICENSE. Empty when none: the app then looks for `clika_rt_license` in its files dirs.
+def licenseFilePath = (findProperty('clikaRtLicenseFile') ?: System.getenv('CLIKA_RT_LICENSE_FILE') ?: '').toString().trim()
+def buildTimeLicense = ''
+if (!licenseFilePath.isEmpty()) {
+  def licenseFile = new File(licenseFilePath)
+  if (licenseFile.isFile()) {
+    buildTimeLicense = (licenseFile.readLines().find { !it.trim().isEmpty() } ?: '').trim()
+  } else {
+    logger.warn("FofRuntime: clikaRtLicenseFile does not exist; building without an embedded license")
+  }
+}
+
+android {
+  namespace "com.chloeyeo.friendorfoe.cross.fof"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+    buildConfigField "String", "CLIKA_RT_LICENSE", "\"" + buildTimeLicense.replace('\\', '\\\\').replace('"', '\\"') + "\""
+  }
+  buildFeatures {
+    buildConfig true
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // ClikaRT Kotlin binding 0.6.4 (arm64-v8a only, minSdk 28) from the local Maven repo the config plugin adds.
+  implementation "io.clika:clika-runtime:0.6.4"
+  // CameraX at the version the native app pinned (every API used here exists in 1.4.1).
+  implementation "androidx.camera:camera-camera2:1.4.1"
+  implementation "androidx.camera:camera-lifecycle:1.4.1"
+  implementation "androidx.camera:camera-view:1.4.1"
+  implementation "androidx.core:core:1.13.1"
+  // USB CDC serial to the reader gadget (jitpack), the same library the native app uses.
+  implementation "com.github.mik3y:usb-serial-for-android:3.9.0"
+}

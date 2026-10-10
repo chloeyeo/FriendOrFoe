@@ -1,0 +1,9 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": [
+      "com.chloeyeo.friendorfoe.cross.fof.FofRuntimeModule",
+      "com.chloeyeo.friendorfoe.cross.fof.FofUsbModule"
+    ]
+  }
+}
