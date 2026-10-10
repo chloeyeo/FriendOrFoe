@@ -58,7 +58,7 @@ data class SettingsValues(
     }
 }
 
-enum class DetectorKind(val label: String) { CLIKART("ClikaRT"), HTTP("Http"), FAKE("Fake") }
+enum class DetectorKind(val label: String) { DUAL("Dual"), CLIKART("ClikaRT"), HTTP("Http"), FAKE("Fake") }
 
 enum class Field {
     MODEL_DIR, HTTP_URL, DASHBOARD_URL, CHALLENGER_ID, DRONE_IDS, LAT, LON, ALT, HEADING,
@@ -87,6 +87,8 @@ data class SettingsForm(
     val strictPhysical: Boolean,
     val demoMode: Boolean,
     val dashboardBaseUrl: String,
+    val droneModelDir: String = DEFAULT_DUAL_DRONE_DIR,
+    val personModelDir: String = DEFAULT_DUAL_PERSON_DIR,
 ) {
     sealed interface Result {
         data class Valid(val values: SettingsValues) : Result
@@ -111,6 +113,14 @@ data class SettingsForm(
             DetectorKind.CLIKART -> {
                 if (dir.isEmpty()) errors[Field.MODEL_DIR] = "path of the pushed model snapshot"
                 DetectorConfig.ClikaRt(dir)
+            }
+            DetectorKind.DUAL -> {
+                val droneDir = droneModelDir.trim()
+                val personDir = personModelDir.trim()
+                if (droneDir.isEmpty() || personDir.isEmpty() || '|' in droneDir || '|' in personDir) {
+                    errors[Field.MODEL_DIR] = "paths of the two pushed snapshots"
+                }
+                DetectorConfig.Dual(droneDir, personDir)
             }
             DetectorKind.HTTP -> {
                 if (!isHttp(serve)) errors[Field.HTTP_URL] = "http://<laptop-ip>:8000"
@@ -158,10 +168,15 @@ data class SettingsForm(
         const val DEFAULT_MODEL_DIR = "/sdcard/Android/data/com.chloeyeo.friendorfoe/files/models/rtdetr_v2_r18vd"
         const val DEFAULT_SERVE_URL = "http://192.168.43.100:8000"
 
+        /** Fallbacks for the dual detector's two snapshot dirs (Prefs' defaults on phone A, `filesDir/models/...`). */
+        const val DEFAULT_DUAL_DRONE_DIR = "/data/user/0/com.chloeyeo.friendorfoe/files/models/rtdetr_v2_drone_rahul"
+        const val DEFAULT_DUAL_PERSON_DIR = "/data/user/0/com.chloeyeo.friendorfoe/files/models/dfine_small_coco"
+
         fun from(v: SettingsValues) = SettingsForm(
             detectorKind = when (v.detector) {
                 DetectorConfig.Fake -> DetectorKind.FAKE
                 is DetectorConfig.ClikaRt -> DetectorKind.CLIKART
+                is DetectorConfig.Dual -> DetectorKind.DUAL
                 is DetectorConfig.Http -> DetectorKind.HTTP
             },
             modelDir = (v.detector as? DetectorConfig.ClikaRt)?.modelDir ?: DEFAULT_MODEL_DIR,
@@ -179,6 +194,8 @@ data class SettingsForm(
             strictPhysical = v.strictPhysical,
             demoMode = v.demoMode,
             dashboardBaseUrl = v.dashboardBaseUrl,
+            droneModelDir = (v.detector as? DetectorConfig.Dual)?.droneDir ?: DEFAULT_DUAL_DRONE_DIR,
+            personModelDir = (v.detector as? DetectorConfig.Dual)?.personDir ?: DEFAULT_DUAL_PERSON_DIR,
         )
     }
 }

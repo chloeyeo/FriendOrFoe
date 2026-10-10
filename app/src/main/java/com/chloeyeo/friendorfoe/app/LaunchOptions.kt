@@ -17,8 +17,8 @@ import java.io.File
  * | `analysis` | `--es analysis 960x540` | ImageAnalysis target size (default 1280x720) |
  * | `parity` | `--es parity parity/scene.png` | run the parity harness on that APK asset |
  * | `dump_frame` | `--ez dump_frame true` | write the next analysed frame to `filesDir/dumps/frame.png` |
- * | `log_raw` | `--ez log_raw true` | log every raw ClikaRT row |
- * | `detector` | `--es detector fake` / `clikart` / `clikart:<dir>` / `http:http://<ip>:8000` | stored detector pref (persists) |
+ * | `log_raw` | `--ez log_raw true` | log every raw ClikaRT row (`raw` for r18, `raw drone` / `raw person` for dual) |
+ * | `detector` | `--es detector dual` / `clikart` (r18 alone) / `fake` / `clikart:<dir>` / `dual:<droneDir>\|<personDir>` / `http:http://<ip>:8000` | stored detector pref (persists) |
  * | `demo` | `--ez demo false` | stored demo-mode pref (persists): false shows the live camera, true the scripted scenario |
  *
  * [from] must run BEFORE `app.coordinator` is first touched: the lazy singleton reads the detector pref once.
@@ -36,6 +36,7 @@ data class LaunchOptions(
         fun from(app: FofApplication, intent: Intent?): LaunchOptions {
             if (!BuildConfig.DEBUG || intent == null) return LaunchOptions()
             intent.getStringExtra("detector")?.let { applyDetector(app, it) }
+            DebugHooks.logRawRows = intent.getBooleanExtra("log_raw", false)
             if (intent.hasExtra("demo")) app.prefs.demoMode = intent.getBooleanExtra("demo", true).also { Log.i(TAG, "launch extra demo=$it") }
             return LaunchOptions(
                 threads = intent.getIntExtra("clika_threads", 2).coerceIn(1, 8),
@@ -58,9 +59,13 @@ data class LaunchOptions(
             val config: DetectorConfig? = when (value.trim()) {
                 "fake" -> DetectorConfig.Fake
                 "clikart" -> app.prefs.defaultClikaRtConfig
+                "dual" -> app.prefs.defaultDualConfig
                 else -> when (val d = DetectorConfig.decode(value)) {
                     is DetectorConfig.ClikaRt ->
                         if (inAppStorage(app, d.modelDir)) d else null.also { Log.w(TAG, "detector extra ignored: dir outside app storage") }
+                    is DetectorConfig.Dual ->
+                        if (inAppStorage(app, d.droneDir) && inAppStorage(app, d.personDir)) d
+                        else null.also { Log.w(TAG, "detector extra ignored: dir outside app storage") }
                     is DetectorConfig.Http ->
                         if (BuildConfig.ALLOW_HTTP_DETECTOR && d.baseUrl.startsWith("http://")) d
                         else null.also { Log.w(TAG, "detector extra ignored: http not allowed or not http://") }

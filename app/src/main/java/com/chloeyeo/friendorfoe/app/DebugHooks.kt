@@ -19,6 +19,10 @@ import java.nio.ByteBuffer
 object DebugHooks {
     private const val TAG = "FoF"
 
+    /** Set by the `log_raw` launch extra; the dual bring-up hooks both models' raw rows when it is true. */
+    @Volatile
+    var logRawRows: Boolean = false
+
     /** Set to dump the next frame [FofApplication.runTick] sees. */
     @Volatile
     var dumpNextFrame: Boolean = false

@@ -72,4 +72,14 @@ class SettingsFormTest {
         val badHttp = form.copy(detectorKind = DetectorKind.HTTP, httpBaseUrl = "10.0.0.5:8000")
         assertEquals(setOf(Field.HTTP_URL), (badHttp.parse() as SettingsForm.Result.Invalid).errors.keys)
     }
+
+    @Test
+    fun dualDetectorSurvivesTheForm() {
+        val dual = values.copy(detector = DetectorConfig.Dual("/data/x/models/drone", "/data/x/models/person"))
+        val f = SettingsForm.from(dual)
+        assertEquals(DetectorKind.DUAL, f.detectorKind)
+        assertEquals(SettingsForm.Result.Valid(dual), f.parse())
+        val blank = f.copy(personModelDir = " ").parse()
+        assertEquals(true, blank is SettingsForm.Result.Invalid)
+    }
 }

@@ -9,7 +9,7 @@ import java.io.File
 
 /**
  * The app's settings (SharedPreferences). Defaults make a fresh install demo-able with no gadget:
- * ClikaRT detector on the pushed model (D-11), demo mode on, the README's physical-layer budgets.
+ * the dual ClikaRT detector (drone specialist + D-FINE person model) on the pushed snapshots, demo mode on, the README's physical-layer budgets.
  */
 class Prefs(context: Context) {
     private val sp: SharedPreferences = context.getSharedPreferences("fof_prefs", Context.MODE_PRIVATE)
@@ -17,12 +17,17 @@ class Prefs(context: Context) {
     /** The D-04 model directory: `<filesDir>/models/rtdetr_v2_r18vd` (the snapshot is copied there on the phone). */
     private val defaultModelDir: String = File(context.filesDir, "models/rtdetr_v2_r18vd").path
 
+    /** The dual detector's snapshots: `<filesDir>/models/rtdetr_v2_drone_rahul` and `<filesDir>/models/dfine_small_coco`. */
+    private val defaultDroneModelDir: String = File(context.filesDir, "models/rtdetr_v2_drone_rahul").path
+    private val defaultPersonModelDir: String = File(context.filesDir, "models/dfine_small_coco").path
+
     /**
-     * Which detector runs; ClikaRT by default (D-11); `fake` or `http:` only when stored. An unreadable stored
+     * Which detector runs; the dual ClikaRT detector by default; `clikart:` (r18 alone), `fake` or `http:` only when
+     * stored. An unreadable stored
      * value still falls back to `fake` through [DetectorConfig.decode].
      */
     var detectorConfig: DetectorConfig
-        get() = sp.getString(KEY_DETECTOR, null)?.let(DetectorConfig::decode) ?: DetectorConfig.ClikaRt(defaultModelDir)
+        get() = sp.getString(KEY_DETECTOR, null)?.let(DetectorConfig::decode) ?: defaultDualConfig
         set(value) = sp.edit().putString(KEY_DETECTOR, value.encode()).apply()
 
     /** This observer's id (2 bytes on the wire). */
@@ -87,9 +92,13 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_DASHBOARD_URL, "") ?: ""
         set(value) = sp.edit().putString(KEY_DASHBOARD_URL, value.trim()).apply()
 
-    /** The fresh-install detector, for the launch options and the H4 flip back from `http:`. */
+    /** The single r18 detector (the Phase 2 baseline), for the `clikart` launch extra and the flip back from `http:`. */
     val defaultClikaRtConfig: DetectorConfig
         get() = DetectorConfig.ClikaRt(defaultModelDir)
+
+    /** The fresh-install detector: drone specialist + D-FINE person model, for the `dual` launch extra. */
+    val defaultDualConfig: DetectorConfig
+        get() = DetectorConfig.Dual(defaultDroneModelDir, defaultPersonModelDir)
 
     fun reChecksConfig(): ReChecks.Config = ReChecks.Config(rttBudgetMs, rssiFloorDbm, strictPhysical)
 

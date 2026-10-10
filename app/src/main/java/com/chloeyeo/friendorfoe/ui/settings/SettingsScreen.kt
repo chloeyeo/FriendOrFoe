@@ -96,6 +96,14 @@ fun SettingsScreen(
                 Section("Detector")
                 Choice(DetectorKind.entries, form.detectorKind, { it.label }) { form = form.copy(detectorKind = it) }
                 when (form.detectorKind) {
+                    DetectorKind.DUAL -> {
+                        TextInput("Drone model directory", form.droneModelDir, errors[Field.MODEL_DIR], KeyboardType.Uri) {
+                            form = form.copy(droneModelDir = it)
+                        }
+                        TextInput("Person model directory", form.personModelDir, errors[Field.MODEL_DIR], KeyboardType.Uri) {
+                            form = form.copy(personModelDir = it)
+                        }
+                    }
                     DetectorKind.CLIKART -> TextInput("Model directory", form.modelDir, errors[Field.MODEL_DIR], KeyboardType.Uri) {
                         form = form.copy(modelDir = it)
                     }

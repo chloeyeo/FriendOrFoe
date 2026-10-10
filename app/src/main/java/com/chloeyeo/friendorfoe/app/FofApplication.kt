@@ -7,6 +7,7 @@ import android.util.Log
 import com.chloeyeo.friendorfoe.BuildConfig
 import com.chloeyeo.friendorfoe.detect.ClikaRtDetector
 import com.chloeyeo.friendorfoe.detect.Detectors
+import com.chloeyeo.friendorfoe.detect.DualDetector
 import com.chloeyeo.friendorfoe.detect.Frame
 import com.chloeyeo.friendorfoe.session.IffCoordinator
 import com.chloeyeo.friendorfoe.signal.FakeSignalSource
@@ -38,7 +39,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    turns it into a clean `ClikaRtException.codeName` (`LICENSE_FAILED`, `LICENSE_EXPIRED`,
  *    `LICENSE_SERVER_UNREACHABLE`).
  * 5. Model directory: `filesDir/models/rtdetr_v2_r18vd` (D-04) holding the pushed hub snapshot (`config.json`,
- *    `model.safetensors`, `preprocessor_config.json`); [ClikaRtDetector.open] opens it with `offline = true`. There is
+ *    `model.safetensors`, `preprocessor_config.json`); [ClikaRtDetector.open] opens it with `offline = true`. The
+ *    default [DualDetector] opens two such snapshots in turn, `filesDir/models/rtdetr_v2_drone_rahul` (drones) and
+ *    `filesDir/models/dfine_small_coco` (people). There is
  *    deliberately no `getExternalFilesDir` fallback: the snapshot already sits in `filesDir` on phone A and a second
  *    path doubles the failure modes.
  * 6. Every refusal becomes a `StatusUi.modelNote` through [noteFor]; branch on code names, never on message text.
@@ -92,16 +95,42 @@ class FofApplication : Application() {
     }
 
     /**
-     * Starts the one load job on [RuntimeLane] (once per process): runtime bring-up, then [ClikaRtDetector.open].
-     * Publishes `model loading…`, then `load X s · warm Y ms · N thr` or the refusal's note. A non-ClikaRT detector
+     * Starts the one load job on [RuntimeLane] (once per process): runtime bring-up, then [ClikaRtDetector.open] (or
+     * [DualDetector.open], both models in turn). Publishes `model loading…`, then `load X s · warm Y ms · N thr`
+     * (dual: `drone 9.1+0.8 s · person 2.0+0.3 s · N thr`) or the refusal's note. A non-ClikaRT detector
      * (`fake`, `http:`) never loads the runtime.
      */
     fun startRuntimeIfNeeded(threads: Int = 2) {
         if (!runtimeStarted.compareAndSet(false, true)) return
         val detector = coordinator.detector
-        if (detector !is ClikaRtDetector) {
-            coordinator.setStatus { it.copy(modelNote = "detector ${detector.name}") }
-            return
+        val open: () -> String = when (detector) {
+            is ClikaRtDetector -> {
+                {
+                    val t = detector.open()
+                    Log.i(TAG, "runtime up: load ${t.loadMs} ms warm ${t.warmupMs} ms threads $threads")
+                    "load ${"%.1f".format(t.loadMs / 1000.0)} s · warm ${t.warmupMs} ms · $threads thr"
+                }
+            }
+            is DualDetector -> {
+                {
+                    val t = detector.open()
+                    if (BuildConfig.DEBUG && DebugHooks.logRawRows) {
+                        detector.drone.rawListener = { DebugHooks.logRows("raw drone", it) }
+                        detector.person.rawListener = { DebugHooks.logRows("raw person", it) }
+                    }
+                    Log.i(
+                        TAG,
+                        "runtime up: ${detector.drone.name} load ${t.drone.loadMs} ms warm ${t.drone.warmupMs} ms + " +
+                            "${detector.person.name} load ${t.person.loadMs} ms warm ${t.person.warmupMs} ms threads $threads",
+                    )
+                    "${detector.drone.classMap.tag} ${secs(t.drone.loadMs)}+${secs(t.drone.warmupMs)} · " +
+                        "${detector.person.classMap.tag} ${secs(t.person.loadMs)}+${secs(t.person.warmupMs)} · $threads thr"
+                }
+            }
+            else -> {
+                coordinator.setStatus { it.copy(modelNote = "detector ${detector.name}") }
+                return
+            }
         }
         if (BuildConfig.CLIKA_RT_LICENSE.isBlank()) {
             coordinator.setStatus { it.copy(modelReady = false, modelNote = "no license in build") }
@@ -113,10 +142,7 @@ class FofApplication : Application() {
             var ready = false
             val note: String = try {
                 loadRuntime(BuildConfig.CLIKA_RT_LICENSE, threads)
-                val t = detector.open()
-                Log.i(TAG, "runtime up: load ${t.loadMs} ms warm ${t.warmupMs} ms threads $threads")
-                ready = true
-                "load ${"%.1f".format(t.loadMs / 1000.0)} s · warm ${t.warmupMs} ms · $threads thr"
+                open().also { ready = true }
             } catch (e: Throwable) {
                 Log.w(TAG, "runtime refused: ${noteFor(e)}")
                 noteFor(e)
@@ -148,7 +174,16 @@ class FofApplication : Application() {
                 coordinator.setStatus { it.copy(modelNote = null) }
             }
             val st = coordinator.state.value
-            Log.i(TAG, "tick ${st.status.msPerFrame} ms ${"%.2f".format(st.status.fps)} fps tracks=${st.tracks.size}")
+            val dual = coordinator.detector as? DualDetector
+            if (dual != null) {
+                // The per-model split on the strip, e.g. `drone 6.1 s + person 1.4 s`.
+                val split = dual.timingNote()
+                coordinator.setStatus { it.copy(modelNote = split) }
+                Log.i(TAG, "tick ${st.status.msPerFrame} ms (${dual.lastDroneMs} drone + ${dual.lastPersonMs} person) " +
+                    "${"%.2f".format(st.status.fps)} fps tracks=${st.tracks.size}")
+            } else {
+                Log.i(TAG, "tick ${st.status.msPerFrame} ms ${"%.2f".format(st.status.fps)} fps tracks=${st.tracks.size}")
+            }
         } catch (e: Exception) {
             tickFailed = true
             Log.w(TAG, "tick failed: ${noteFor(e)}")
@@ -159,13 +194,16 @@ class FofApplication : Application() {
     /** Debug: the parity harness on the lane, queued behind the load job; [assetPath] names an APK asset. */
     fun runParity(assetPath: String) {
         RuntimeLane.executor.execute {
-            (coordinator.detector as? ClikaRtDetector)?.let { DebugHooks.runParity(this, assetPath, it) }
+            val d = coordinator.detector
+            ((d as? ClikaRtDetector) ?: ((d as? DualDetector)?.drone as? ClikaRtDetector))?.let { DebugHooks.runParity(this, assetPath, it) }
                 ?: Log.w(TAG, "parity needs the clikart detector")
         }
     }
 
     companion object {
         private const val TAG = "FoF"
+
+        private fun secs(ms: Long): String = "%.1f s".format(ms / 1000.0)
 
         fun from(context: Context): FofApplication = context.applicationContext as FofApplication
 
