@@ -11,7 +11,10 @@ import com.chloeyeo.friendorfoe.signal.FakeSignalSource
 import com.chloeyeo.friendorfoe.signal.GadgetUnavailableException
 import com.chloeyeo.friendorfoe.signal.SignalEvent
 import com.chloeyeo.friendorfoe.signal.SignalKind
+import com.chloeyeo.friendorfoe.signal.SignalChoice
 import com.chloeyeo.friendorfoe.signal.SignalSource
+import com.chloeyeo.friendorfoe.signal.SwitchingSignalSource
+import com.chloeyeo.friendorfoe.ui.overlay.tagFor
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,13 +43,22 @@ class IffCoordinatorChallengeTest {
         var next = CompletableDeferred<SignalEvent.Answer>()
         var fail: GadgetUnavailableException? = null
 
+        /** Challenges whose flow was cancelled before the answer (window passed, Reset). */
+        var cancelled = 0
+
         override suspend fun challenge(req: ChallengeRequest): Flow<SignalEvent> {
             requests += req
             fail?.let { throw it }
             val answer = next
             return flow {
-                emit(SignalEvent.Status("challenge sent · box ${req.boxId}"))
-                emit(answer.await())
+                var answered = false
+                try {
+                    emit(SignalEvent.Status("challenge sent · box ${req.boxId}"))
+                    emit(answer.await())
+                    answered = true
+                } finally {
+                    if (!answered) cancelled++
+                }
             }
         }
     }
@@ -220,7 +232,7 @@ class IffCoordinatorChallengeTest {
 
         clock += 1_001
         c.tick(frame())
-        assertEquals(IffState.Verdict(VerdictKind.UNKNOWN, "no response", null, null, null), c.iffOf(id))
+        assertEquals(IffState.Verdict(VerdictKind.UNKNOWN, "no response", null, null, null, SignalKind.FAKE), c.iffOf(id))
         assertNull(c.lock)
         assertEquals(VerdictKind.UNKNOWN, c.state.value.signal.single().verdict)
         assertEquals(VerdictKind.UNKNOWN, c.state.value.events.first().verdict)
@@ -233,8 +245,57 @@ class IffCoordinatorChallengeTest {
         c.tick(frame())
         val id = c.droneId()
         c.challenge(id)
-        assertEquals(IffState.Verdict(VerdictKind.UNKNOWN, "no gadget", null, null, null), c.iffOf(id))
+        assertEquals(IffState.Verdict(VerdictKind.UNKNOWN, "no gadget", null, null, null, SignalKind.USB_GADGET), c.iffOf(id))
         assertNull(c.lock)
+    }
+
+    @Test
+    fun `with the default signal choice and no gadget the tap is UNKNOWN no gadget, never the fake`() {
+        val usb = ManualSource().apply { fail = GadgetUnavailableException("no gadget") }
+        val fake = FakeSignalSource(FakeMode.HONEST, delayMs = { 0L })
+        val switching = SwitchingSignalSource(usb, fake, { SignalChoice.DEFAULT }, { FakeMode.HONEST }, { false })
+        val c = coordinator(switching, oneDrone)
+        c.tick(frame())
+        val id = c.droneId()
+        c.challenge(id)
+        val v = c.iffOf(id) as IffState.Verdict
+        assertEquals(VerdictKind.UNKNOWN, v.kind)
+        assertEquals("no gadget", v.reason)
+        assertEquals(SignalKind.USB_GADGET, v.source)
+        assertEquals(1, usb.requests.size)
+        assertEquals(0, c.reChecks.seenCount) // no fake answer was produced
+    }
+
+    @Test
+    fun `a fake answer is tagged FAKE on the verdict, the signal row and the event`() {
+        val c = coordinator(FakeSignalSource(FakeMode.HONEST, delayMs = { 0L }), oneDrone)
+        c.tick(frame())
+        val id = c.droneId()
+        c.challenge(id)
+        assertEquals(SignalKind.FAKE, (c.iffOf(id) as IffState.Verdict).source)
+        assertEquals(SignalKind.FAKE, c.state.value.signal.single().source)
+        assertEquals(SignalKind.FAKE, c.state.value.events.first().source)
+        val tag = tagFor(c.state.value.tracks.single { it.id == id }, clock)
+        assertTrue(tag.text, tag.text.endsWith(" · FAKE"))
+    }
+
+    @Test
+    fun `a locked drone lost for more than 5 s keeps its id and its countdown when it is detected again`() {
+        val source = ManualSource()
+        val c = coordinator(source, oneDrone, emptyList(), oneDrone)
+        c.tick(frame())
+        val id = c.droneId()
+        c.challenge(id)
+        clock += 6_000 // past the tracker's 5 s drone window
+        c.tick(frame())
+        clock += 500
+        c.tick(frame()) // the same drone again, where the lock is
+        val tracks = c.state.value.tracks
+        assertEquals(listOf(id), tracks.map { it.id }) // one ring, no second `drone · ?` beside it
+        assertTrue(tracks.single().iff is IffState.Challenged)
+
+        source.next.complete(answer())
+        assertEquals(VerdictKind.FRIEND, (c.iffOf(id) as IffState.Verdict).kind)
     }
 
     @Test
@@ -299,7 +360,7 @@ class IffCoordinatorChallengeTest {
     }
 
     @Test
-    fun `an answer after the window is logged and ignored`() {
+    fun `a passed window cancels the challenge, and the source's late answer is logged, never drawn`() {
         val source = ManualSource()
         val c = coordinator(source, oneDrone, oneDrone)
         c.tick(frame())
@@ -308,28 +369,32 @@ class IffCoordinatorChallengeTest {
         clock += 10_001
         c.tick(frame())
         assertEquals(VerdictKind.UNKNOWN, (c.iffOf(id) as IffState.Verdict).kind)
+        assertEquals(1, source.cancelled) // the source's side closed (the USB source then waits out the gadget)
 
-        source.next.complete(answer())
+        source.next.complete(answer()) // nobody collects it any more
+        c.lateAnswer(answer(), "late answer for box $id ignored") // what the USB source reports instead
 
         assertEquals(VerdictKind.UNKNOWN, (c.iffOf(id) as IffState.Verdict).kind)
-        assertTrue(c.state.value.events.first().text.startsWith("late answer ignored · FRIEND · nonce 00010203…"))
+        assertTrue(c.state.value.events.first().text.startsWith("late answer for box $id ignored · FRIEND · nonce 00010203…"))
         assertEquals(1, c.state.value.signal.size)
         assertEquals(1, c.reChecks.seenCount) // the late nonce is still spent
     }
 
     @Test
-    fun `an answer that arrives after a reset is ignored and the reset state stays clean`() {
+    fun `a reset cancels the challenge in flight and its answer never lands`() {
         val source = ManualSource()
         val c = coordinator(source, oneDrone)
         c.tick(frame())
         val id = c.droneId()
         c.challenge(id)
         c.reset()
+        assertEquals(1, source.cancelled)
         source.next.complete(answer(nonce = nonceB))
         val s = c.state.value
         assertTrue(s.tracks.isEmpty())
         assertTrue(s.signal.isEmpty())
-        assertTrue(s.events.single().text.startsWith("late answer ignored"))
+        assertTrue(s.events.isEmpty())
+        assertNull(c.lock)
     }
 
     @Test

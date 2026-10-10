@@ -19,6 +19,7 @@ import com.chloeyeo.friendorfoe.track.Tracker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -100,8 +101,15 @@ class IffCoordinator(
     /** The tapped track's latest score, shown on the synthetic lock box once the tracker has lost the object. */
     private var lockScore = 0f
 
-    /** The challenge in flight (matches [lock]); [seq] tells a stale answer from the current one. Under stateLock. */
-    private class Pending(val seq: Long, val req: ChallengeRequest)
+    /**
+     * The challenge in flight (matches [lock]); [seq] tells a stale answer from the current one; [job] is its
+     * coroutine (cancelled on Reset and when the window passes, which also closes the source's side); [source] is
+     * the source it went to, once known. Under stateLock.
+     */
+    private class Pending(val seq: Long, val req: ChallengeRequest) {
+        var job: Job? = null
+        var source: SignalKind? = null
+    }
 
     private var pending: Pending? = null
     private var seqCounter = 0L
@@ -150,7 +158,11 @@ class IffCoordinator(
             motion.catchUp(seeds)
             val moved = detections.mapIndexed { i, d -> d.copy(box = seeds[i].box) }
             for (track in tracker.tracks) motion.box(track.id)?.let { tracker.moveTo(track.id, it.box) }
-            val seen = tracker.update(moved, t1)
+            // The locked box and the held verdicts stay in the tracker, so the drone's next detection lands on them
+            // (windows and holds that are over are closed first, so their tracks time out normally).
+            expireLocked(t1)
+            val pinned = holds.keys + setOfNotNull(lock?.boxId)
+            val seen = tracker.update(moved, t1, pinned)
             val seedByBox = HashMap<BoxF, MotionTracker.Seed>()
             moved.forEachIndexed { i, d -> seedByBox.putIfAbsent(d.box, seeds[i]) }
             for (track in seen) seedByBox.remove(track.box)?.let { motion.assign(track.id, it) }
@@ -244,7 +256,9 @@ class IffCoordinator(
     private fun expireLocked(now: Long) {
         val current = lock
         if (current != null && !current.isActive(now)) {
-            applyVerdictLocked(now, current, IffState.Verdict(VerdictKind.UNKNOWN, NO_RESPONSE, null, null, null), null, emptyList())
+            val p = pending
+            applyVerdictLocked(now, current, IffState.Verdict(VerdictKind.UNKNOWN, NO_RESPONSE, null, null, null, p?.source), null, emptyList())
+            p?.job?.cancel()
         }
         val held = holds.entries.iterator()
         while (held.hasNext()) {
@@ -277,10 +291,10 @@ class IffCoordinator(
         iffById[id] = verdict
         holds[id] = Hold(rect, now + VERDICT_HOLD_MS, score)
 
-        signalRows.addFirst(now to SignalUi(verdict.droneId, verdict.kind, verdict.reason, verdict.rssiDbm, verdict.roundTripMs, 0L))
+        signalRows.addFirst(now to SignalUi(verdict.droneId, verdict.kind, verdict.reason, verdict.rssiDbm, verdict.roundTripMs, 0L, verdict.source))
         while (signalRows.size > MAX_SIGNAL_ROWS) signalRows.removeLast()
 
-        val fake = answer?.source == SignalKind.FAKE
+        val fake = verdict.source == SignalKind.FAKE
         val parts = ArrayList<String>(10)
         parts += verdict.kind.name
         (verdict.reason ?: verdict.droneId)?.let { parts += it }
@@ -306,6 +320,7 @@ class IffCoordinator(
                 droneId = verdict.droneId,
                 rssiDbm = verdict.rssiDbm,
                 roundTripMs = verdict.roundTripMs,
+                source = verdict.source,
             ),
         )
     }
@@ -331,6 +346,7 @@ class IffCoordinator(
         val req: ChallengeRequest
         val seq: Long
         val until: Long
+        val open: Pending
         synchronized(stateLock) {
             val now = clock()
             expireLocked(now)
@@ -341,7 +357,8 @@ class IffCoordinator(
             lockScore = track.score
             seq = ++seqCounter
             req = ChallengeRequest(boxId, challengerId(), now / 1000L)
-            pending = Pending(seq, req)
+            open = Pending(seq, req)
+            pending = open
             iffById[boxId] = IffState.Challenged(until = until)
             eventLog.add(now, "challenge · box $boxId")
             _state.update { s ->
@@ -351,7 +368,11 @@ class IffCoordinator(
                 )
             }
         }
-        scope.launch { runChallenge(seq, req, until) }
+        val job = scope.launch { runChallenge(seq, req, until) }
+        synchronized(stateLock) {
+            // An unconfined scope may already have finished it; a Reset in between gets the job cancelled here.
+            if (pending === open) open.job = job else if (!job.isCompleted) job.cancel()
+        }
     }
 
     /** Steps 2-3 off the main thread: send, wait for the answer inside the window, hand it to [onAnswer]. */
@@ -359,7 +380,12 @@ class IffCoordinator(
         val t0 = elapsedMillis()
         try {
             val answer = withTimeoutOrNull((until - clock()).coerceAtLeast(1L)) {
-                signalSource.challenge(req)
+                val events = try {
+                    signalSource.challenge(req)
+                } finally {
+                    noteSource(seq, signalSource.kind)
+                }
+                events
                     .onEach { if (it is SignalEvent.Status) log(Redact.line(it.text, max = 120)) }
                     .firstOrNull { it is SignalEvent.Answer } as SignalEvent.Answer?
             }
@@ -383,6 +409,11 @@ class IffCoordinator(
         synchronized(stateLock) { publishLocked(clock(), null) }
     }
 
+    /** Which source challenge [seq] went to, for the `FAKE` tag on a verdict without an answer (silent, failed). */
+    private fun noteSource(seq: Long, kind: SignalKind) {
+        synchronized(stateLock) { pending?.takeIf { it.seq == seq }?.source = kind }
+    }
+
     /** The answer to challenge [seq], [roundTripMs] measured on the phone; dropped (and logged) if no longer open. */
     private fun onAnswer(seq: Long, answer: SignalEvent.Answer, roundTripMs: Long) {
         synchronized(stateLock) {
@@ -397,9 +428,23 @@ class IffCoordinator(
                 return
             }
             val result = reChecks.check(answer, roundTripMs)
-            val verdict = IffState.Verdict(result.verdict, result.reason, answer.droneId, answer.rssiDbm, roundTripMs)
+            val verdict = IffState.Verdict(result.verdict, result.reason, answer.droneId, answer.rssiDbm, roundTripMs, answer.source)
             applyVerdictLocked(now, current, verdict, answer, result.notes)
             publishLocked(now) { st -> answer.rssiDbm?.let { st.copy(rssiDbm = it) } ?: st }
+        }
+    }
+
+    /**
+     * An answer the signal source received for no open challenge (it arrived after its window closed or after a
+     * Reset, see `AnswerRouter`): never drawn, but logged and its nonce spent in the phone's ledger, so the same
+     * nonce is refused if it is ever replayed.
+     */
+    fun lateAnswer(answer: SignalEvent.Answer, why: String) {
+        synchronized(stateLock) {
+            val now = clock()
+            reChecks.check(answer, 0L)
+            eventLog.add(now, "$why · ${answer.verdict} · nonce ${Redact.nonce(answer.nonce)}")
+            _state.update { it.copy(events = eventLog.snapshot()) }
         }
     }
 
@@ -408,19 +453,22 @@ class IffCoordinator(
         synchronized(stateLock) {
             val now = clock()
             val current = lock
-            if (pending?.seq != seq || current == null) return
-            applyVerdictLocked(now, current, IffState.Verdict(VerdictKind.UNKNOWN, reason, null, null, null), null, emptyList())
+            val open = pending
+            if (open == null || open.seq != seq || current == null) return
+            applyVerdictLocked(now, current, IffState.Verdict(VerdictKind.UNKNOWN, reason, null, null, null, open.source), null, emptyList())
             publishLocked(now, null)
         }
     }
 
     /**
      * The Reset button (OBS-10): forgets the tracks, the nonce ledger, every verdict, the lock, the gadget panel
-     * rows and the event log, so a rehearsal and the live run start clean. An answer still in flight is then
-     * dropped as late. Track ids keep counting up (see [Tracker.reset]).
+     * rows and the event log, so a rehearsal and the live run start clean. The challenge in flight is cancelled
+     * (the USB source then treats the gadget as busy until its answer arrives, see `AnswerRouter`), and an answer
+     * that still reaches the session is dropped as late. Track ids keep counting up (see [Tracker.reset]).
      */
     fun reset() {
         synchronized(stateLock) {
+            pending?.job?.cancel()
             tracker.reset()
             motion.reset()
             reChecks.reset()

@@ -10,6 +10,7 @@ import com.chloeyeo.friendorfoe.signal.FakeMode
 import com.chloeyeo.friendorfoe.signal.FakeSignalSource
 import com.chloeyeo.friendorfoe.signal.ReChecks
 import com.chloeyeo.friendorfoe.signal.SignalChoice
+import com.chloeyeo.friendorfoe.signal.SignalEvent
 import com.chloeyeo.friendorfoe.signal.SwitchingSignalSource
 import com.chloeyeo.friendorfoe.signal.UsbGadgetSignalSource
 
@@ -70,6 +71,10 @@ object SignalWiring {
 
             override fun onLine(text: String) {
                 coordinator.log(text)
+            }
+
+            override fun onStaleAnswer(answer: SignalEvent.Answer, why: String) {
+                coordinator.lateAnswer(answer, why)
             }
         }
         usb.start()

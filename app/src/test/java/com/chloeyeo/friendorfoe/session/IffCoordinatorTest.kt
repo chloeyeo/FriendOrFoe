@@ -133,7 +133,9 @@ class IffCoordinatorTest {
 
         assertNull(coordinator.lock)
         val ui = coordinator.state.value.tracks.single { it.id == id }
-        assertEquals(IffState.Verdict(VerdictKind.UNKNOWN, "no response", null, null, null), ui.iff)
+        // The default scope runs the challenge on another thread, so only kind and reason are deterministic here.
+        val v = ui.iff as IffState.Verdict
+        assertEquals(VerdictKind.UNKNOWN to "no response", v.kind to v.reason)
         assertTrue(coordinator.state.value.events.first().text.startsWith("UNKNOWN · no response · box $id"))
 
         clock += IffCoordinator.VERDICT_HOLD_MS

@@ -50,10 +50,12 @@ class Tracker(
 
     /**
      * Feeds one frame's [detections] taken at [nowMillis] (wall clock) and returns the tracks seen in this frame
-     * (matched or new), oldest first. Coasting by wall clock per class (D-09).
+     * (matched or new), oldest first. Coasting by wall clock per class (D-09); a track whose id is in [pinned] (the
+     * box locked for a challenge, the boxes still showing a verdict) never times out, so the next detection of the
+     * same object re-matches it by IoU instead of starting a second ring beside it.
      */
-    fun update(detections: List<Detection>, nowMillis: Long): List<Track> =
-        match(detections, nowMillis) { nowMillis - it.lastSeenMillis <= stickyMs(it.cls) }
+    fun update(detections: List<Detection>, nowMillis: Long, pinned: Set<Int> = emptySet()): List<Track> =
+        match(detections, nowMillis) { it.id in pinned || nowMillis - it.lastSeenMillis <= stickyMs(it.cls) }
 
     private fun stickyMs(cls: ObjClass): Long = when (cls) {
         ObjClass.DRONE -> droneStickyMs
