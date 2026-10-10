@@ -19,8 +19,13 @@ class Tracker(
     private val iouThreshold: Float = 0.3f,
     private val maxMisses: Int = 3,
     private val droneStickyMs: Long = 5_000L,
-    private val personStickyMs: Long = 1_500L,
+    personStickyMs: Long = 1_500L,
 ) {
+    /**
+     * How long a PERSON track coasts without a match (wall-clock overload). The coordinator raises it from the
+     * measured round time while the person model runs only every few rounds (`RoundScheduler.personStickyMs`).
+     */
+    var personStickyMs: Long = personStickyMs
 
     /**
      * One tracked object; [misses] is 0 when it was seen in the latest update; [lastSeenMillis] is the wall-clock

@@ -5,6 +5,9 @@ import com.chloeyeo.friendorfoe.detect.BoxF
 import com.chloeyeo.friendorfoe.detect.Detector
 import com.chloeyeo.friendorfoe.detect.Frame
 import com.chloeyeo.friendorfoe.detect.ObjClass
+import com.chloeyeo.friendorfoe.detect.RoundDetector
+import com.chloeyeo.friendorfoe.detect.RoundPlan
+import com.chloeyeo.friendorfoe.detect.RoundScheduler
 import com.chloeyeo.friendorfoe.signal.ReChecks
 import com.chloeyeo.friendorfoe.signal.SignalSource
 import com.chloeyeo.friendorfoe.track.BoxLock
@@ -38,6 +41,12 @@ import kotlinx.coroutines.flow.update
  * template matching on a small gray frame ([MotionTracker]); [tick] fast-forwards each detection from its capture
  * time to now before it is matched, so a moving drone's ring stays on the drone although a detection takes seconds.
  *
+ * Detection rounds: with a [RoundDetector] (the dual detector) the [RoundScheduler] picks each round under the lock
+ * from the tracked drone boxes (their current motion positions): a crop round re-detects only around the tracked
+ * drones, a full round scans the whole frame (every few rounds, and whenever nothing is tracked), and the person
+ * model runs only every few rounds; the tracker's person coast time follows the measured gap between person rounds.
+ * A crop round's detections go through the same fast-forward and match as a full round's.
+ *
  * Threading: [tick] runs on the runtime lane, [motionTick] on the motion executor; [challenge] and [setPreviewSize]
  * are called from the main thread (a tap, a layout pass); [state] is read from the UI. The tracker, the motion
  * tracker, the lock and the per-track IFF states are touched only inside `synchronized(stateLock)`; the inference
@@ -57,6 +66,7 @@ class IffCoordinator(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val offlineProbe: () -> Boolean = { true },
     private val motion: MotionTracker = MotionTracker(),
+    private val scheduler: RoundScheduler = RoundScheduler(),
 ) {
     private val _state = MutableStateFlow(ObserverUiState(status = StatusUi(detectorName = detector.name)))
 
@@ -99,8 +109,11 @@ class IffCoordinator(
      */
     fun tick(frame: Frame) {
         val t0 = clock()
-        val detections = detector.detect(frame)
+        val rounds = detector as? RoundDetector
+        val plan = if (rounds != null) synchronized(stateLock) { scheduler.plan(droneBoxesLocked(), t0) } else null
+        val detections = if (rounds != null && plan != null) rounds.detectRound(frame, plan) else detector.detect(frame)
         val t1 = clock()
+        lastPlan = plan
         val offline = offlineProbe()
         // The fast-forward (seconds of gray frames per box) runs on a snapshot OUTSIDE the lock, so the 10 fps
         // motion ticks and taps do not wait for it; frames pushed meanwhile are caught up under the lock.
@@ -112,6 +125,10 @@ class IffCoordinator(
             motion.catchUp(seeds)
             val moved = detections.mapIndexed { i, d -> d.copy(box = seeds[i].box) }
             for (track in tracker.tracks) motion.box(track.id)?.let { tracker.moveTo(track.id, it.box) }
+            if (plan != null) {
+                scheduler.done(plan, t1)
+                tracker.personStickyMs = scheduler.personStickyMs()
+            }
             val seen = tracker.update(moved, t1)
             val seedByBox = HashMap<BoxF, MotionTracker.Seed>()
             moved.forEachIndexed { i, d -> seedByBox.putIfAbsent(d.box, seeds[i]) }
@@ -137,6 +154,15 @@ class IffCoordinator(
             publishLocked(clock(), null)
         }
     }
+
+    /** The plan of the last [tick] (null for a detector without rounds); written on the runtime lane. */
+    @Volatile
+    var lastPlan: RoundPlan? = null
+        private set
+
+    /** The tracked drones' boxes for the next round's crops: the motion position when there is one. Under stateLock. */
+    private fun droneBoxesLocked(): List<BoxF> =
+        tracker.tracks.filter { it.cls == ObjClass.DRONE }.map { motion.box(it.id)?.box ?: it.box }
 
     /** The boxes as the user sees them: the motion position when there is one, else the tracker's box. Under stateLock. */
     private fun publishLocked(now: Long, status: ((StatusUi) -> StatusUi)?) {
