@@ -201,25 +201,30 @@ gadgets and is checked by the `selftest` sketch against JSON vectors produced by
 generator (`eval/gen_vectors.py` also emits them as a `vectors.h` header); the phone-side re-checks are a
 small unit-tested Kotlin class.
 
-### Gadget link over USB (draft, owner: stream 2, file `docs/GADGET_LINK.md`)
+### Gadget link over USB (owner: stream 2, Ihan; file `docs/GADGET_LINK.md`)
 
-USB CDC serial (the phone is USB host over OTG; library `com.github.mik3y:usb-serial-for-android`),
-115200 8N1, one JSON object per line. The gadget generates the nonce, runs the radio exchange and the crypto.
+Ihan's firmware is the source of truth (`firmware/README.md`, serial interface v2). The reader is an ESP32-C3 on
+its built-in USB-Serial/JTAG (CDC ACM `303a:1001`), opened by the phone with `usb-serial-for-android` at 115200
+with DTR and RTS off. Plain-text commands go in, one JSON event per line comes out; the reader generates the
+nonce, runs the BLE exchange and the HMAC check itself.
 
 ```
-phone → gadget   {"cmd":"challenge","boxId":3,"challengerId":7,"t":1760000000,"seq":12}
-                 {"cmd":"status"}
-gadget → phone   {"type":"answer","seq":12,"boxId":3,"verdict":"FRIEND","reason":null,"droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}
-                 {"type":"answer","seq":12,"boxId":3,"verdict":"FOE","reason":"replayed nonce","droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-61,"responseMs":40}
-                 {"type":"answer","seq":12,"boxId":3,"verdict":"UNKNOWN","reason":"no response","nonce":"<32 hex>","responseMs":10000}
-                 {"type":"status","fw":"0.1","battery":3.9,"mode":"HONEST"}
+phone → reader   QUERY k3v9x2qa-12-3                       (request id: launch prefix - seq - boxId)
+                 STATUS k3v9x2qa-s1                        (handshake on connect, recovery during a query)
+reader → phone   {"event":"ACK","request_id":"k3v9x2qa-12-3","accepted":true,"reason":"ACCEPTED","state":"QUERYING"}
+                 {"event":"TX_CHALLENGE","request_id":"k3v9x2qa-12-3",…,"drone_id":1,"nonce":"<32 hex>",…,"result":"BROADCAST_STARTED"}
+                 {"event":"RESULT","request_id":"k3v9x2qa-12-3","query":1,"response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":460,"elapsed_ms":460,"replay":false}
+                 {"event":"RESULT","request_id":"k3v9x2qa-13-3","query":2,"response_received":false,"verdict":"UNKNOWN","reason":"NO_RESPONSE","response_ms":null,"elapsed_ms":3000,"replay":false}
+                 {"event":"STATE","boot_id":"ae07effed99ac4d4","request_id":"k3v9x2qa-12-3","state":"IDLE","reason":"CHANGED"}
 ```
 
-Ihan decides what the gadget actually is (board, radio, how the drone-side attack modes are switched) and
-keeps `docs/GADGET_LINK.md` current; the phone side only depends on the lines above. The answer echoes the
-challenge's `seq` and `boxId`; the phone discards an answer whose echo does not match the open challenge. Because the gadget is
-developed on the bench over USB-C to a laptop, the whole link can be exercised before the phone exists:
-`laptop/gadget_cli.py` sends the same JSON lines from the laptop and prints the answers.
+The phone matches every line to its challenge by `request_id` (unique across app restarts, so the reader never
+re-sends an old verdict as `replay:true`), takes the nonce from `TX_CHALLENGE` for its replay ledger, and maps the
+reader's FRIEND/UNKNOWN + reason to the ring: `NONE` → FRIEND, `NO_RESPONSE` → UNKNOWN · no response,
+`AUTH_FAILED` → FOE · bad tag, `INVALID_MESSAGE` → UNKNOWN · invalid message, `RADIO_ERROR` → UNKNOWN · gadget
+radio error, any `replay:true` → FOE · replayed nonce, a refused ACK → UNKNOWN · its reason (`gadget busy` during
+the reader's 3 s cooldown). The full table, timing and recovery rules are in `docs/GADGET_LINK.md`. On the bench,
+Ihan's `firmware/tools/reader_gui.py` and `serial_monitor.py` talk to the same reader from a laptop.
 
 ### How the phone, the reader gadget and the drone gadget work together
 
@@ -228,42 +233,45 @@ its USB-C port does. The drone side is answered by the **drone gadget**. (The ea
 answering with a QR code is dropped.)
 
 1. **Phone A detects the drone** with the camera, on-device and offline (Phase 2).
-2. **You tap the drone box.** The phone locks that box for the 10 s challenge window and tells the reader
-   gadget over USB to challenge.
-3. **The reader gadget does the radio part.** It sends one authenticated challenge with a fresh 128-bit nonce
-   to the drone gadget, receives the answer and verifies the HMAC tag itself (Ihan's Arduino C/C++ firmware).
-4. **The reader gadget reports to the phone over USB:** verdict, signal strength (RSSI) and response time.
-5. **The phone re-checks** the round-trip time, the signal strength and that the nonce was never seen
-   before, then draws the green or red ring on the box that was tapped. The box lock keeps the answer on that
-   box even if the detector loses the drone for a moment.
+2. **You tap the drone box.** The phone locks that box for the 10 s challenge window and sends the reader
+   `QUERY <request_id>` over USB.
+3. **The reader gadget does the radio part.** It broadcasts one authenticated challenge with a fresh 128-bit
+   nonce over BLE to the drone gadget, receives the answer and verifies the HMAC tag itself (Ihan's Arduino
+   firmware, ESP32-C3 reader and NU40 nRF52840 drone).
+4. **The reader gadget reports to the phone over USB:** `ACK`, the challenge's nonce (`TX_CHALLENGE`), then one
+   `RESULT` with verdict, reason and response time, within 3 s. It reports no signal strength.
+5. **The phone re-checks** the round-trip time and that the nonce was never seen before (the RSSI gate is
+   skipped: no RSSI from this reader), then draws the green or red ring on the box that was tapped. The box lock
+   keeps the answer on that box even if the detector loses the drone for a moment.
 
 So the phone receives the IFF *result* over USB and decides what to show; the gadget handles the radio and
 the crypto. This wiring is Phase 4 (gadget link, Kotlin USB signal source) and Phase 5 (tap → challenge →
-verdict → ring). Until the hardware is attached, `FakeSignalSource` replays scripted answers, so the ring
-logic can be built and tested without the gadget.
+verdict → ring). Without the hardware, `FakeSignalSource` replays scripted answers (tagged `FAKE`), and the unit
+tests replay Ihan's captured reader lines through the real protocol code.
 
 **How the phone is connected to the reader gadget**
 
 - **Cable:** the gadget plugs into phone A's USB-C port (directly or through an OTG adapter). The phone is the
   USB host and powers the gadget.
-- **Driver:** the gadget enumerates as a USB CDC serial device; the app opens it with `usb-serial-for-android`,
-  which also drives the CP210x, CH34x and FTDI bridge chips if the board uses one (`signal/UsbGadgetSignalSource`).
-- **Settings:** 115200 baud, 8N1, DTR asserted on open.
-- **Protocol:** one JSON object per line in both directions (the lines in the block above). The phone also
-  times the USB round trip, from writing the `challenge` line to reading the `answer` line, against a 2.5 s
-  budget alongside the gadget's own `responseMs`.
+- **Driver:** the C3 enumerates as CDC ACM `303a:1001`; the app opens it with `usb-serial-for-android`
+  (`signal/UsbGadgetSignalSource`, with 303a:1001 also mapped to the CDC ACM driver explicitly). A USB device
+  filter lets Android remember the permission ("always open").
+- **Settings:** 115200 baud; DTR and RTS **off** for the C3 (DTR with an RTS change can put it into download
+  mode), DTR on for any other CDC board, as Ihan's host does.
+- **Protocol:** `QUERY <id>` / `STATUS <id>` lines in, JSON events out (the block above); a `STATUS` handshake on
+  connect (`role reader · interface_version 2`). The phone times the USB round trip, from writing the `QUERY`
+  line to reading the `RESULT` line, against a 2.5 s budget alongside the reader's own `response_ms`.
 
 Two practical consequences:
 
 - **The single USB-C port is taken by the gadget** during the demo, so adb and screen mirroring over USB
   cannot run at the same time: mirror over adb-over-Wi-Fi on the laptop LAN; the phone does not charge while
   it hosts the gadget.
-- **The gadget can be tested without the phone:** `laptop/gadget_cli.py` sends the same JSON lines from the
-  laptop over the board's serial port.
+- **The gadget can be tested without the phone:** Ihan's `firmware/tools/reader_gui.py` drives the reader from
+  the laptop over the same serial interface.
 
-Still open for Ihan to decide and write into `docs/GADGET_LINK.md`: which board (native USB or a serial
-bridge chip), which radio module, the USB vendor and product ID (the app may need a custom probe table), and
-whether the board resets when the port is opened.
+Still to confirm on the hardware (`docs/GADGET_LINK.md`, last section): that Android's port open with DTR/RTS off
+does not reset the C3 or put it into download mode, the permission flow, and real round trips over OTG.
 
 ---
 
