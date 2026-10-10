@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: context exhaustion at 78% (2026-10-10)
-last_updated: "2026-10-10T08:04:46.338Z"
-last_activity: 2026-10-10 -- Phase 2 planning complete
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-10-10T08:09:22.963Z"
+last_activity: 2026-10-10 -- Completed 02-01
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 6
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 
 ## Current Position
 
-Phase: 1 of 7 (Foundation)
-Plan: 0 of TBD in current phase
-Status: Ready to execute
-Last activity: 2026-10-10 -- Phase 2 planning complete
+Phase: 2 of 7 (On-device detection)
+Plan: 1 of 6 in current phase (02-01 complete; next 02-02)
+Status: Executing
+Last activity: 2026-10-10 -- Completed 02-01 (contract, offline probe, ClikaRT default, de-dup, /v1/detections parser)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 17%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: -
 
 *Updated after each plan completion*
+| Phase 02 P01 | 15 min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -59,6 +60,10 @@ Progress: [░░░░░░░░░░] 0%
 
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
+
+- [02-01]: Dedup — a new DRONE box replaces overlapping kept boxes only when all of them are PERSON; any other IoU >= 0.5 overlap drops the new box (D-08).
+- [02-01]: DetectionsJson skips malformed rows (JSONException, non-finite, inverted, score outside 0..1); only a non-JSON body or a missing `detections` array throws IllegalArgumentException.
+- [02-01]: TrackUi.score (Float = 0f) added in the [shared] commit alongside StatusUi.modelNote; Prefs defaults to ClikaRt(<filesDir>/models/rtdetr_v2_r18vd).
 
 - [Team mode]: Three parallel streams — Chloe (@chloeyeo) detection + app shell + integration lead (Phase 2, then Phase 5); Ihan (@angmusae2015) challenge-response in Arduino C/C++ on the gadgets plus the phone's `signal/` package (Phases 3 and 4); Jongho (@ujon) UI + laptop dashboard (against `DemoScenario`, inside Phase 4). Phases 2, 3, 4 run concurrently after Phase 1; integration checkpoints H4 (live boxes), H10 (end-to-end green ring with the gadget), H14 (three rehearsals + backup video), H20 (submission) are the GitHub milestones, with about 30 issues created from the plan.
 - [Decided 2026-10-10]: The gadget runs the crypto; the phone only re-checks — nonce never seen before (`replayed nonce`), round trip or gadget `responseMs` over 2.5 s (`late response`), RSSI below −70 dBm or inconsistent with the near-field claim (`signal mismatch`, "n/a" and skipped when missing unless strict), attribution to the tapped box. Gadget link: USB CDC serial 115200 8N1, newline JSON per README "Gadget link over USB" (usb-serial-for-android on the phone). No second-phone responder; `FakeSignalSource` is the simulator and the on-stage fallback.
@@ -94,6 +99,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-10T06:35:07.435Z
-Stopped at: context exhaustion at 78% (2026-10-10)
+Last session: 2026-10-10T08:09:17.654Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

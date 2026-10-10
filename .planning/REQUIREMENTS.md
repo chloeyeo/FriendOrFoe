@@ -17,7 +17,7 @@ Requirements for the hackathon submission. Each maps to one roadmap phase.
 
 - [ ] **DET-01**: Observer sees a live back-camera preview with one continuous analysis stream (CameraX Preview + ImageAnalysis, KEEP_ONLY_LATEST, 1280x720 or 1920x1080, orientation locked), so boxes always refer to the current frame.
 - [ ] **DET-02**: Observer gets drone and person detections on the phone itself from the ClikaRT AAR at roughly 1 fps, with the RT-DETR v2 r18 snapshot loaded from device storage with `offline = true`, all load/infer calls on one runtime lane off the main thread, a visible "model loading…" state, and no network access at any point.
-- [ ] **DET-03**: Detections are mapped by `labelId` to `person` (0) and `drone` (aeroplane 4, bird 14, kite 33) with per-class score thresholds (drone proxies ≈ 0.25–0.3, person 0.5); every other class is ignored and `cell phone` is never mapped to drone.
+- [x] **DET-03**: Detections are mapped by `labelId` to `person` (0) and `drone` (aeroplane 4, bird 14, kite 33) with per-class score thresholds (drone proxies ≈ 0.25–0.3, person 0.5); every other class is ignored and `cell phone` is never mapped to drone.
 - [ ] **DET-04**: Boxes are drawn on the preview in correct preview coordinates (analysis-frame → PreviewView mapping including rotation and FILL_CENTER crop) with a class colour, label and score, and visibly sit on the object they belong to.
 - [ ] **DET-05**: The detector sits behind a `Detector` interface; `HttpDetector` against `clikart-cli serve` (`POST /v1/detections`) is selectable with one config change as the H4 contingency and dev loop, and nothing above the interface changes.
 - [ ] **DET-06**: When a drone box is tapped it is locked (id + rect) for the 10 s challenge window, so the gadget's answer — which can arrive up to 10 s later — is attributed to that box even if the detector loses the object in between.
@@ -59,7 +59,7 @@ Requirements for the hackathon submission. Each maps to one roadmap phase.
 
 - [ ] **OBS-01**: Every tracked object carries a ring and a tag: `drone · ?` amber before a challenge, `FRIEND · <droneId> · <rssi> dBm · <ms> ms` green, `FOE · replayed nonce` / `FOE · position mismatch` / `FOE · bad tag` / `FOE · late response` / `FOE · signal mismatch` red, `UNKNOWN · no response` red, `person` neutral; rings and fonts are legible from 2 m.
 - [ ] **OBS-02**: Tapping a drone box sends exactly one `challenge` command to the gadget over USB ({boxId, challengerId, t}) and draws a 10 s countdown on the box; nothing is transmitted — by the phone or by the gadget — until the user taps; in demo mode the tap goes to `FakeSignalSource` instead, and with no gadget connected and demo mode off the tap yields `UNKNOWN · no gadget` immediately.
-- [ ] **OBS-04**: A status strip shows the detector name, ms/frame, fps, model-ready state, an OFFLINE badge (airplane mode on and no validated internet) and a gadget dot (green when the USB gadget answers `status`, amber in demo mode, red otherwise) with the latest RSSI.
+- [x] **OBS-04**: A status strip shows the detector name, ms/frame, fps, model-ready state, an OFFLINE badge (airplane mode on and no validated internet) and a gadget dot (green when the USB gadget answers `status`, amber in demo mode, red otherwise) with the latest RSSI.
 - [ ] **OBS-05**: A settings screen holds the detector choice, the gadget (USB device and baud, challengerId, accepted droneIds), demo mode (`FakeSignalSource` and its scenario), positions (observer position and heading; the Honest/Relay demo coordinates for the HUD), per-class thresholds, the RTT budget, the RSSI floor and the strict-physical-checks switch, persisted on the phone; there is no key on the phone.
 - [ ] **OBS-06**: An on-phone event log lists every detection and verdict {t, class, score, box, verdict, reason, roundTripMs, responseMs, rssiDbm, nonce prefix} with counts (drones / people / friend / foe / unknown).
 - [ ] **OBS-10**: A reset button clears tracks, the phone's nonce ledger, verdicts and the log so rehearsals and the live run start clean.
@@ -145,7 +145,7 @@ Which phases cover which requirements. Populated during roadmap creation (2026-1
 |-------------|-------|--------|
 | DET-01 | Phase 2 | Pending |
 | DET-02 | Phase 2 | Pending |
-| DET-03 | Phase 2 | Pending |
+| DET-03 | Phase 2 | Complete |
 | DET-04 | Phase 2 | Pending |
 | DET-05 | Phase 1 | Pending |
 | DET-06 | Phase 2 | Pending |
@@ -172,7 +172,7 @@ Which phases cover which requirements. Populated during roadmap creation (2026-1
 | PHY-02 | Phase 5 | Pending |
 | OBS-01 | Phase 5 | Pending |
 | OBS-02 | Phase 5 | Pending |
-| OBS-04 | Phase 2 | Pending |
+| OBS-04 | Phase 2 | Complete |
 | OBS-05 | Phase 5 | Pending |
 | OBS-06 | Phase 5 | Pending |
 | OBS-10 | Phase 5 | Pending |
