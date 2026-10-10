@@ -1,8 +1,14 @@
 # FriendOrFoe dashboard page
 
-The judges' second screen: counts, the live list of detections and verdicts, and the tracks phone A is
-drawing (same ring colours and tag text as the phone). Svelte 5 + SvelteKit, served by the Vite dev
-server on the demo laptop; the data comes from the FastAPI side in `laptop/dashboard/app.py`.
+The judges' second screen: current observer tracks and recent identification results. A neutral,
+square-edged layout gives the camera view priority; colour identifies FRIEND, FOE, UNKNOWN and
+unchallenged objects. Svelte 5 + SvelteKit, served by the Vite dev server on the demo laptop; the data
+comes from the FastAPI side in `laptop/dashboard/app.py`.
+
+The observation header counts objects in the latest frame, while the results panel shows past
+identifications newest first. Select a result to expand signal strength, response time and other
+details. **All activity** also shows detections and challenge messages. Stale positions are dashed
+and labelled; a missing camera image is explicitly marked as positions only.
 
 ```bash
 npm install        # once, while online
@@ -15,9 +21,8 @@ plays the scripted demo run into it. Full setup, ports and the scrcpy mirror: [`
 
 | File | Role |
 |---|---|
-| `src/lib/Dashboard.svelte` | page layout: header with API status, counts, frame, event list |
+| `src/lib/Dashboard.svelte` | responsive observation/results layout and feed status |
 | `src/lib/poller.svelte.ts` | polls `GET /api/state` once a second while the page is open (`createSubscriber`) |
-| `src/lib/components/FrameView.svelte` | rings and tags over the latest thumbnail (shown only while fresh) |
-| `src/lib/components/EventList.svelte` | newest-first rows: time, verdict or class, reason, RSSI · round trip, age |
-| `src/lib/components/Counts.svelte` | drones / people / friend / foe / unknown |
-| `src/app.css` | palette shared with the phone's `ui/theme/Color.kt`; system fonts, no CDN |
+| `src/lib/components/FrameView.svelte` | square track boxes with concise tags, fresh thumbnails and stale-feed handling |
+| `src/lib/components/EventList.svelte` | verdict, target, reason and age; expandable measurements and an all-activity view |
+| `src/app.css` | charcoal/grey palette with semantic verdict colours; system fonts, no CDN |

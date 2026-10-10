@@ -1,26 +1,31 @@
-/* Same palette as the phone (app/.../ui/theme/Color.kt). System fonts only: no CDN at demo time. */
+/* Neutral observer palette. System fonts and local assets work offline. */
 :root {
-	--amber: #ffb300;
-	--green: #00e676;
-	--red: #ff3d3d;
-	--neutral: #e6e6e6;
-	--ink: #0b0d10;
-	--surface-0: #0b0d10;
-	--surface-1: #161a20;
-	--surface-2: #222831;
-	--text: #f2f4f7;
-	--muted: #9aa4b2;
+	--amber: #edb85c;
+	--green: #84d891;
+	--red: #ff7168;
+	--neutral: #d9dcdf;
+	--ink: #101113;
+	--surface-0: #101113;
+	--surface-1: #181a1d;
+	--surface-2: #23262a;
+	--line: #3b4046;
+	--text: #eeefed;
+	--muted: #a6abb1;
+	--accent: #d2d6db;
+	--mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 	color-scheme: dark;
+	font-family: var(--mono);
+	font-synthesis: none;
 }
 
-html,
-body {
-	margin: 0;
-	background: var(--surface-0);
-	color: var(--text);
-	font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-}
-
-code {
-	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--surface-0); color: var(--text); }
+body { min-width: 320px; }
+button, input, select { font: inherit; border-radius: 0; }
+button { cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+button:disabled { cursor: default; }
+button, a { -webkit-tap-highlight-color: transparent; }
+a { color: var(--accent); text-underline-offset: 3px; }
+code { font-family: var(--mono); }
+::selection { background: var(--accent); color: var(--ink); }
