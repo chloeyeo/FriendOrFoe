@@ -1,0 +1,83 @@
+package com.chloeyeo.friendorfoe.app
+
+import android.content.Context
+import android.content.SharedPreferences
+import com.chloeyeo.friendorfoe.detect.DetectorConfig
+import com.chloeyeo.friendorfoe.signal.ReChecks
+
+/**
+ * The app's settings (SharedPreferences). Defaults make a fresh install demo-able with no hardware:
+ * fake detector, demo mode on, the README's physical-layer budgets.
+ */
+class Prefs(context: Context) {
+    private val sp: SharedPreferences = context.getSharedPreferences("fof_prefs", Context.MODE_PRIVATE)
+
+    /** Which detector runs; `fake` until stream 1 switches the default to ClikaRT. */
+    var detectorConfig: DetectorConfig
+        get() = DetectorConfig.decode(sp.getString(KEY_DETECTOR, null))
+        set(value) = sp.edit().putString(KEY_DETECTOR, value.encode()).apply()
+
+    /** This observer's id (2 bytes on the wire). */
+    var challengerId: Int
+        get() = sp.getInt(KEY_CHALLENGER_ID, 7)
+        set(value) = sp.edit().putInt(KEY_CHALLENGER_ID, value).apply()
+
+    /** Demo mode: FakeSignalSource instead of the USB gadget, DemoScenario available on screen. */
+    var demoMode: Boolean
+        get() = sp.getBoolean(KEY_DEMO_MODE, true)
+        set(value) = sp.edit().putBoolean(KEY_DEMO_MODE, value).apply()
+
+    /** Round-trip budget for the `late response` re-check. */
+    var rttBudgetMs: Long
+        get() = sp.getLong(KEY_RTT_BUDGET_MS, 2500L)
+        set(value) = sp.edit().putLong(KEY_RTT_BUDGET_MS, value).apply()
+
+    /** RSSI floor for the `signal mismatch` re-check. */
+    var rssiFloorDbm: Int
+        get() = sp.getInt(KEY_RSSI_FLOOR_DBM, -70)
+        set(value) = sp.edit().putInt(KEY_RSSI_FLOOR_DBM, value).apply()
+
+    /** Strict physical checks: an answer without RSSI fails instead of being skipped. */
+    var strictPhysical: Boolean
+        get() = sp.getBoolean(KEY_STRICT_PHYSICAL, false)
+        set(value) = sp.edit().putBoolean(KEY_STRICT_PHYSICAL, value).apply()
+
+    /** Configured observer position for the indoor demo (no GPS fix in the venue). */
+    var demoLatitude: Double
+        get() = sp.getString(KEY_DEMO_LAT, null)?.toDoubleOrNull() ?: 37.5665
+        set(value) = sp.edit().putString(KEY_DEMO_LAT, value.toString()).apply()
+
+    var demoLongitude: Double
+        get() = sp.getString(KEY_DEMO_LON, null)?.toDoubleOrNull() ?: 126.9780
+        set(value) = sp.edit().putString(KEY_DEMO_LON, value.toString()).apply()
+
+    var demoAltitudeM: Double
+        get() = sp.getString(KEY_DEMO_ALT, null)?.toDoubleOrNull() ?: 30.0
+        set(value) = sp.edit().putString(KEY_DEMO_ALT, value.toString()).apply()
+
+    /** Configured heading of the camera in degrees (0 = north) for the position cone. */
+    var demoHeadingDeg: Float
+        get() = sp.getFloat(KEY_DEMO_HEADING, 0f)
+        set(value) = sp.edit().putFloat(KEY_DEMO_HEADING, value).apply()
+
+    /** The laptop dashboard, e.g. `http://192.168.1.2:8081`; empty disables event posting. */
+    var dashboardBaseUrl: String
+        get() = sp.getString(KEY_DASHBOARD_URL, "") ?: ""
+        set(value) = sp.edit().putString(KEY_DASHBOARD_URL, value.trim()).apply()
+
+    fun reChecksConfig(): ReChecks.Config = ReChecks.Config(rttBudgetMs, rssiFloorDbm, strictPhysical)
+
+    private companion object {
+        const val KEY_DETECTOR = "detectorConfig"
+        const val KEY_CHALLENGER_ID = "challengerId"
+        const val KEY_DEMO_MODE = "demoMode"
+        const val KEY_RTT_BUDGET_MS = "rttBudgetMs"
+        const val KEY_RSSI_FLOOR_DBM = "rssiFloorDbm"
+        const val KEY_STRICT_PHYSICAL = "strictPhysical"
+        const val KEY_DEMO_LAT = "demoLatitude"
+        const val KEY_DEMO_LON = "demoLongitude"
+        const val KEY_DEMO_ALT = "demoAltitudeM"
+        const val KEY_DEMO_HEADING = "demoHeadingDeg"
+        const val KEY_DASHBOARD_URL = "dashboardBaseUrl"
+    }
+}

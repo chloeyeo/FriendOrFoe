@@ -8,6 +8,13 @@ lifecycleRuntimeKtx = "2.6.1"
 activityCompose = "1.8.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
+# FriendOrFoe: versions verified in .planning/research/STACK.md (keep CameraX 1.4.1 as declared by the template)
+clikaRt = "0.6.4"
+cameraX = "1.4.1"
+coroutines = "1.10.2"
+okhttp = "5.5.0"
+usbSerial = "3.9.0"
+orgJson = "20250517"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -24,6 +31,18 @@ androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "u
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+# FriendOrFoe
+clika-runtime = { group = "io.clika", name = "clika-runtime", version.ref = "clikaRt" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraX" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraX" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraX" }
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+# okhttp-jvm, not the KMP "okhttp" coordinate: on Android that one resolves to okhttp-android, whose AAR metadata
+# demands compileSdk 37 (checkDebugAarMetadata fails at 36). The JVM artifact is the core library and runs on Android.
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp-jvm", version.ref = "okhttp" }
+usb-serial = { group = "com.github.mik3y", name = "usb-serial-for-android", version.ref = "usbSerial" }
+# Real org.json for local unit tests (the android.jar stubs throw "not mocked")
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -19,3 +19,6 @@ local.properties
 *.safetensors
 *.license
 .kotlin/
+# Python and Arduino build leftovers
+__pycache__/
+/firmware/**/build/
