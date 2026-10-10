@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -45,9 +46,10 @@ import kotlinx.coroutines.delay
  * strip on top, the latest answers bottom-left. Tapping a drone box calls [onTapTrack] with its id (the
  * coordinator turns that into a challenge). With [onNextState] set, a button steps the demo scenario.
  *
- * TODO(stream 3 / Jongho): the camera preview (`AndroidView { PreviewView }`) goes underneath the Canvas and
- * reports its size to `IffCoordinator.setPreviewSize`; then GadgetPanel, SettingsScreen, EventLogScreen,
- * big fonts for the judges, reset button, demo-mode switch.
+ * [preview] is the camera picture (`AndroidView { PreviewView }`, FILL_CENTER), drawn under the Canvas; the
+ * Canvas's pixel size goes to [onPreviewSize] (`IffCoordinator.setPreviewSize`). Slot names match the UI branch.
+ * TODO(stream 3 / Jongho): the rest of the screen is theirs (GadgetPanel, SettingsScreen, EventLogScreen,
+ * big fonts for the judges, reset button, demo-mode switch).
  */
 @Composable
 fun CameraScreen(
@@ -56,6 +58,8 @@ fun CameraScreen(
     onTapTrack: (Int) -> Unit = {},
     onNextState: (() -> Unit)? = null,
     nextStateLabel: String = "next state",
+    onPreviewSize: (width: Int, height: Int) -> Unit = { _, _ -> },
+    preview: @Composable (Modifier) -> Unit = {},
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val challenged = state.tracks.any { it.iff is IffState.Challenged }
@@ -69,9 +73,11 @@ fun CameraScreen(
     val tagStyle = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
     Box(modifier.fillMaxSize().background(Color.Black)) {
+        preview(Modifier.fillMaxSize())
         Canvas(
             Modifier
                 .fillMaxSize()
+                .onSizeChanged { onPreviewSize(it.width, it.height) }
                 .pointerInput(state.tracks) {
                     detectTapGestures { p ->
                         state.tracks
@@ -103,7 +109,7 @@ fun StatusStrip(status: StatusUi, modifier: Modifier = Modifier) {
             status.detectorName,
             "${status.msPerFrame} ms",
             "%.1f fps".format(status.fps),
-            if (status.modelReady) "model ready" else "model loading",
+            status.modelNote ?: if (status.modelReady) "model ready" else "model loading",
             if (status.offline) "OFFLINE" else "online",
             if (status.gadgetConnected) "gadget connected" else "no gadget",
             status.rssiDbm?.let { "$it dBm" } ?: "rssi —",
@@ -139,7 +145,7 @@ fun SignalPanel(signal: List<SignalUi>, modifier: Modifier = Modifier) {
 /**
  * [CameraScreen] fed by [DemoScenario]: the "next state" button steps through drone appears -> challenged ->
  * FRIEND -> FOE (replayed nonce, position mismatch, late response) -> UNKNOWN; tapping the drone box from the
- * first state also starts the challenge. This is what MainActivity shows until the camera and the coordinator are wired.
+ * first state also starts the challenge. MainActivity now shows the live camera; this stays for the UI stream.
  */
 @Composable
 fun DemoCameraScreen(modifier: Modifier = Modifier) {
