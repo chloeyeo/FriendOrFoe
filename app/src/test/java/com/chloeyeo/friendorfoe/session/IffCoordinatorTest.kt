@@ -5,6 +5,7 @@ import com.chloeyeo.friendorfoe.detect.Frame
 import com.chloeyeo.friendorfoe.detect.ObjClass
 import com.chloeyeo.friendorfoe.signal.FakeSignalSource
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -40,6 +41,27 @@ class IffCoordinatorTest {
         val person = coordinator.state.value.tracks.single { it.cls == ObjClass.PERSON }
         assertEquals(128f * 0.66f * 20f, person.box.left, 0.01f)
         assertEquals(72f * 0.98f * 20f, person.box.bottom, 0.01f)
+    }
+
+    @Test
+    fun `setStatus publishes modelNote and modelReady without a tick`() {
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource())
+        coordinator.setStatus { it.copy(modelReady = false, modelNote = "model loading… 3 s") }
+        val status = coordinator.state.value.status
+        assertEquals("model loading… 3 s", status.modelNote)
+        assertFalse(status.modelReady)
+        assertEquals("fake", status.detectorName)
+    }
+
+    @Test
+    fun `offlineProbe value lands in status offline on every tick`() {
+        val online = IffCoordinator(FakeDetector(), FakeSignalSource(), offlineProbe = { false })
+        online.tick(frame())
+        assertFalse(online.state.value.status.offline)
+
+        val byDefault = IffCoordinator(FakeDetector(), FakeSignalSource())
+        byDefault.tick(frame())
+        assertTrue(byDefault.state.value.status.offline)
     }
 
     @Test

@@ -26,7 +26,12 @@ import kotlinx.coroutines.flow.update
  *    -> `Verdict(UNKNOWN, "no response", ...)`;
  * 3. post the verdict to the laptop dashboard through `net/EventClient` (fire-and-forget), then release the lock.
  *
- * Not thread-safe: [tick] runs on the runtime lane; [state] is read from the UI.
+ * Not thread-safe: [tick] runs on the runtime lane; [state] is read from the UI. [setStatus] is the exception: it is
+ * called by the model loader (runtime lane) and the activity (main thread) and is safe from both because it only goes
+ * through `_state.update` (an atomic compare-and-set on the state flow).
+ *
+ * @param offlineProbe evaluated once per [tick] into [StatusUi.offline] (D-12; `app/OfflineProbe` on the phone,
+ *   a constant in tests); the default `{ true }` keeps the badge OFFLINE when nothing is injected
  */
 class IffCoordinator(
     val detector: Detector,
@@ -35,6 +40,7 @@ class IffCoordinator(
     private val tracker: Tracker = Tracker(),
     private val eventLog: EventLog = EventLog(),
     private val clock: () -> Long = { System.currentTimeMillis() },
+    private val offlineProbe: () -> Boolean = { true },
 ) {
     private val _state = MutableStateFlow(ObserverUiState(status = StatusUi(detectorName = detector.name)))
 
@@ -79,7 +85,7 @@ class IffCoordinator(
         _state.update { s ->
             s.copy(
                 tracks = trackUis,
-                status = s.status.copy(msPerFrame = t1 - t0, fps = fps, modelReady = true),
+                status = s.status.copy(msPerFrame = t1 - t0, fps = fps, modelReady = true, offline = offlineProbe()),
                 events = eventLog.snapshot(),
             )
         }
@@ -89,6 +95,11 @@ class IffCoordinator(
     fun log(text: String) {
         eventLog.add(clock(), text)
         _state.update { it.copy(events = eventLog.snapshot()) }
+    }
+
+    /** Publishes status fields without a frame (model loading note, detector name, link health); see the class KDoc. */
+    fun setStatus(update: (StatusUi) -> StatusUi) {
+        _state.update { it.copy(status = update(it.status)) }
     }
 
     /** Tap -> challenge -> answer -> re-check -> verdict -> events; see the class KDoc for the plan. */
