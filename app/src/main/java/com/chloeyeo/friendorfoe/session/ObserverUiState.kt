@@ -2,6 +2,7 @@ package com.chloeyeo.friendorfoe.session
 
 import com.chloeyeo.friendorfoe.detect.BoxF
 import com.chloeyeo.friendorfoe.detect.ObjClass
+import com.chloeyeo.friendorfoe.signal.SignalKind
 
 /**
  * Contract 3 of 3 (README section 3): the session produces it, stream 3 renders it and nothing else. Every field
@@ -32,6 +33,7 @@ data class TrackUi(val id: Int, val cls: ObjClass, val box: BoxF, val iff: IffSt
  *
  * @property modelNote free text from the model loader for the strip — `model loading… 3 s`,
  *   `load 3.2 s · warm 1400 ms`, or a ClikaRT code name such as `LICENSE_FAILED` on failure; never the credential
+ * @property fakeSignal a tap on the live camera goes to the scripted FakeSignalSource, not the gadget (FAKE badge)
  */
 data class StatusUi(
     val detectorName: String = "none",
@@ -42,9 +44,10 @@ data class StatusUi(
     val gadgetConnected: Boolean = false,
     val rssiDbm: Int? = null,
     val modelNote: String? = null,
+    val fakeSignal: Boolean = false,
 )
 
-/** One row of the signal/gadget panel: the gadget's latest answer after the phone's re-checks. */
+/** One row of the signal/gadget panel: the gadget's latest answer after the phone's re-checks; [source] FAKE = scripted. */
 data class SignalUi(
     val droneId: String?,
     val verdict: VerdictKind?,
@@ -52,6 +55,7 @@ data class SignalUi(
     val rssiDbm: Int?,
     val roundTripMs: Long?,
     val ageMs: Long,
+    val source: SignalKind? = null,
 )
 
 /**
@@ -72,6 +76,7 @@ data class EventUi(
     val droneId: String? = null,
     val rssiDbm: Int? = null,
     val roundTripMs: Long? = null,
+    val source: SignalKind? = null,
 )
 
 /** The IFF state drawn on a drone box. */
@@ -86,13 +91,17 @@ sealed interface IffState {
      */
     data class Challenged(val until: Long, val windowMs: Long = DEFAULT_WINDOW_MS) : IffState
 
-    /** The verdict after the phone's re-checks: green `FRIEND · id · dBm · ms`, red `FOE · reason`, red `UNKNOWN · no response`. */
+    /**
+     * The verdict after the phone's re-checks: green `FRIEND · id · dBm · ms`, red `FOE · reason`, red `UNKNOWN · no response`.
+     * @property source where the answer came from; [SignalKind.FAKE] (scripted) is tagged `FAKE` on the ring; null when unknown
+     */
     data class Verdict(
         val kind: VerdictKind,
         val reason: String?,
         val droneId: String?,
         val rssiDbm: Int?,
         val roundTripMs: Long?,
+        val source: SignalKind? = null,
     ) : IffState
 
     companion object {
