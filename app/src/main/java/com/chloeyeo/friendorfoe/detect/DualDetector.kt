@@ -81,13 +81,15 @@ class DualDetector(
         /**
          * The production pair: the RahulKate drone RT-DETR v2 in [droneDir], D-FINE S (COCO) in [personDir]. The
          * inner names are the directory names (`clikart:rtdetr_v2_drone_rahul_320`), so the `runtime up` line says
-         * which input size runs; a `_320` drone dir adds ` @320` to the strip name.
+         * which input size runs; a `_<N>` drone dir (`_320`, `_256`, …) adds ` @<N>` to the strip name.
          */
         fun clikaRt(droneDir: String, personDir: String): DualDetector = DualDetector(
             drone = ClikaRtDetector(droneDir, ClassMap.DRONE_RAHUL, "clikart:" + java.io.File(droneDir).name),
             person = ClikaRtDetector(personDir, ClassMap.DFINE_PERSON, "clikart:" + java.io.File(personDir).name),
-            name = if (droneDir.trimEnd('/').endsWith("_320")) "$NAME @320" else NAME,
+            name = INPUT_SUFFIX.find(java.io.File(droneDir).name)?.let { "$NAME @${it.groupValues[1]}" } ?: NAME,
         )
+
+        private val INPUT_SUFFIX = Regex("_([0-9]{3})$")
 
         private fun secs(ms: Long): String = "%.1f s".format(java.util.Locale.US, ms / 1000.0)
     }

@@ -1,17 +1,23 @@
 package com.chloeyeo.friendorfoe.detect
 
+import android.util.Log
 import io.clika.modelverse.AutoModelForObjectDetection
 import io.clika.modelverse.DetectOptions
 import io.clika.modelverse.ImageInput
 import io.clika.modelverse.Modelverse
+import io.clika.modelverse.ModelverseException
 import io.clika.modelverse.ObjectDetectionPipeline
 import io.clika.modelverse.Task
 import io.clika.modelverse.VisionLoadOptions
 import io.clika.modelverse.VisionTask
+import io.clika.runtime.ClikaRtException
 import java.io.File
 
-/** How long [ClikaRtDetector.open] took: the snapshot load and the black-frame warm-up, in milliseconds. */
-data class OpenTiming(val loadMs: Long, val warmupMs: Long)
+/**
+ * How long [ClikaRtDetector.open] took: the snapshot load and the black-frame warm-up, in milliseconds, and the
+ * device and dtype it actually opened on (`cpu` after a refused `vulkan:0`).
+ */
+data class OpenTiming(val loadMs: Long, val warmupMs: Long, val device: String = LoadKnobs.DEFAULT_DEVICE, val dtype: String? = null)
 
 /**
  * The production detector — one closed-set checkpoint (RT-DETR v2 r18vd, the RahulKate drone RT-DETR v2, D-FINE S)
@@ -27,7 +33,8 @@ data class OpenTiming(val loadMs: Long, val warmupMs: Long)
  * 2. `val model = AutoModelForObjectDetection.fromPretrained(modelDir, VisionLoadOptions(offline = true, device = "cpu"))`
  *    — [modelDir] is the pushed hub snapshot directory (`config.json`, `model.safetensors`, `preprocessor_config.json`),
  *    `<filesDir>/models/rtdetr_v2_r18vd` (D-04); a directory source ignores the hub knobs, `offline = true` is
- *    belt and braces. Loading takes seconds. CPU only (D-06).
+ *    belt and braces. Loading takes seconds. CPU by default (D-06); [LoadKnobs.current] may ask for `vulkan:0`
+ *    (a refusal falls back to `cpu`, logged with its code name) and a `float16`/`bfloat16` weight dtype.
  * 3. `val pipeline = Modelverse.pipeline(Task.OBJECT_DETECTION, model) as ObjectDetectionPipeline`
  *    (the pipeline constructor is `internal`; `Modelverse.pipeline(task, model)` is the door).
  * 4. Per frame: `pipeline(ImageInput.Rgba8888(frame.rgba, frame.width, frame.height), DetectOptions(scoreThreshold = 0.25f))`
@@ -50,6 +57,7 @@ class ClikaRtDetector(
     private val modelDir: String,
     override val classMap: ClassMap = ClassMap.COCO_R18,
     override val name: String = "clikart:rtdetr_v2_r18vd",
+    private val knobs: () -> LoadKnobs = { LoadKnobs.current },
 ) : ModelDetector {
 
     @Volatile
@@ -75,25 +83,45 @@ class ClikaRtDetector(
         timing?.let { if (pipeline != null) return it }
         val dir = File(modelDir)
         ModelFiles.check(dir)
-        val t0 = System.nanoTime()
-        val model = AutoModelForObjectDetection.fromPretrained(
-            dir.absolutePath,
-            VisionLoadOptions(offline = true, device = "cpu"),
-        )
-        val caps = model.capabilities
-        check(VisionTask.DETECT in caps.visionTasks && !caps.openVocabulary) { "not a closed-set detector" }
-        classMap.labelMismatch(caps.labels)?.let { mismatch ->
-            runCatching { model.close() }
-            throw IllegalStateException(mismatch)
+        val k = knobs()
+        val (p, t) = try {
+            openOn(dir, k.device, k.dtype)
+        } catch (e: Exception) {
+            if (k.device == LoadKnobs.DEFAULT_DEVICE || (e !is ClikaRtException && e !is ModelverseException)) throw e
+            // A GPU the runtime refuses (driver, backend missing): log the code name, then the same load on the CPU.
+            Log.w(TAG, "$name: device ${k.device} refused (${codeName(e)}), falling back to cpu")
+            openOn(dir, LoadKnobs.DEFAULT_DEVICE, k.dtype)
         }
-        val p = Modelverse.pipeline(Task.OBJECT_DETECTION, model) as ObjectDetectionPipeline
-        val t1 = System.nanoTime()
-        p(ImageInput.Rgba8888(ByteArray(640 * 640 * 4), 640, 640), options()) // zero rows expected (Pitfall D2)
-        val t2 = System.nanoTime()
-        val t = OpenTiming((t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000)
         pipeline = p
         timing = t
         return t
+    }
+
+    /** Load, label check, pipeline and warm-up on [device] / [dtype]; closes the model again on any failure. */
+    private fun openOn(dir: File, device: String, dtype: String?): Pair<ObjectDetectionPipeline, OpenTiming> {
+        val t0 = System.nanoTime()
+        val model = AutoModelForObjectDetection.fromPretrained(
+            dir.absolutePath,
+            VisionLoadOptions(offline = true, device = device, dtype = dtype),
+        )
+        val p = try {
+            val caps = model.capabilities
+            check(VisionTask.DETECT in caps.visionTasks && !caps.openVocabulary) { "not a closed-set detector" }
+            classMap.labelMismatch(caps.labels)?.let { mismatch -> throw IllegalStateException(mismatch) }
+            Modelverse.pipeline(Task.OBJECT_DETECTION, model) as ObjectDetectionPipeline
+        } catch (e: Exception) {
+            runCatching { model.close() }
+            throw e
+        }
+        val t1 = System.nanoTime()
+        try {
+            p(ImageInput.Rgba8888(ByteArray(640 * 640 * 4), 640, 640), options()) // zero rows expected (Pitfall D2)
+        } catch (e: Exception) {
+            runCatching { p.close() }
+            throw e
+        }
+        val t2 = System.nanoTime()
+        return p to OpenTiming((t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000, device, dtype)
     }
 
     /** Raw rows of [frame] in frame pixels, score-descending, before the class map; feeds [rawListener]. */
@@ -115,4 +143,14 @@ class ClikaRtDetector(
 
     /** RT-DETR / D-FINE are closed-set: `labels` stays empty (refused otherwise, D-05); the class map applies DET-03 after. */
     private fun options() = DetectOptions(maxResults = 20, scoreThreshold = 0.25f)
+
+    private companion object {
+        const val TAG = "FoF"
+
+        fun codeName(e: Throwable): String = when (e) {
+            is ClikaRtException -> e.codeName
+            is ModelverseException -> e.codeName.ifEmpty { e.message.orEmpty().take(80) }
+            else -> e.javaClass.simpleName
+        }
+    }
 }

@@ -5,6 +5,8 @@ import android.util.Log
 import android.util.Size
 import com.chloeyeo.friendorfoe.BuildConfig
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
+import com.chloeyeo.friendorfoe.detect.LoadKnobs
+import com.chloeyeo.friendorfoe.detect.ModelDirs
 import java.io.File
 
 /**
@@ -21,6 +23,10 @@ import java.io.File
  * | `detector` | `--es detector dual` (320 input) / `dual640` / `clikart` (r18 alone) / `fake` / `clikart:<dir>` / `dual:<droneDir>\|<personDir>` / `http:http://<ip>:8000` | stored detector pref (persists) |
  * | `motion_bench` | `--ez motion_bench true` | log the motion tracker's cost per step and per fast-forward on this CPU |
  * | `demo` | `--ez demo false` | stored demo-mode pref (persists): false shows the live camera, true the scripted scenario |
+ * | `clika_device` | `--es clika_device vulkan:0` | ClikaRT device for both models, this process only (`cpu` default; a refused `vulkan:0` falls back to `cpu`) |
+ * | `clika_dtype` | `--es clika_dtype float16` | weight dtype for both models, this process only (`float16` / `bfloat16`; `float32` = the checkpoint's own) |
+ * | `drone_input` | `--ei drone_input 256` | dual detector, drone snapshot `files/models/rtdetr_v2_drone_rahul_<N>` (320/256/224/160), this process only |
+ * | `person_input` | `--ei person_input 224` | dual detector, person snapshot `files/models/dfine_small_coco_<N>` (320/256/224), this process only |
  *
  * [from] must run BEFORE `app.coordinator` is first touched: the lazy singleton reads the detector pref once.
  */
@@ -45,6 +51,7 @@ data class LaunchOptions(
                     com.chloeyeo.friendorfoe.track.MotionBench.run(rounds = 5).forEach { Log.i(TAG, it) }
                 }, "motion-bench").start()
             }
+            applyLoadKnobs(app, intent)
             if (intent.hasExtra("demo")) app.prefs.demoMode = intent.getBooleanExtra("demo", true).also { Log.i(TAG, "launch extra demo=$it") }
             return LaunchOptions(
                 threads = intent.getIntExtra("clika_threads", 2).coerceIn(1, 8),
@@ -53,6 +60,26 @@ data class LaunchOptions(
                 dumpFrame = intent.getBooleanExtra("dump_frame", false),
                 logRaw = intent.getBooleanExtra("log_raw", false),
             )
+        }
+
+        /**
+         * `clika_device`, `clika_dtype`, `drone_input`, `person_input`: process-only (never stored), so a launch
+         * without them goes back to the defaults. The input sizes override the detector pref with the dual pair.
+         */
+        private fun applyLoadKnobs(app: FofApplication, intent: Intent) {
+            if (intent.hasExtra("clika_device") || intent.hasExtra("clika_dtype")) {
+                LoadKnobs.current = LoadKnobs(
+                    device = LoadKnobs.parseDevice(intent.getStringExtra("clika_device")),
+                    dtype = if (intent.hasExtra("clika_dtype")) LoadKnobs.parseDtype(intent.getStringExtra("clika_dtype")) else LoadKnobs.DEFAULT_DTYPE,
+                )
+                Log.i(TAG, "launch extra load knobs ${LoadKnobs.current}")
+            }
+            val droneInput = if (intent.hasExtra("drone_input")) intent.getIntExtra("drone_input", 0) else null
+            val personInput = if (intent.hasExtra("person_input")) intent.getIntExtra("person_input", 0) else null
+            ModelDirs.dualFor(app.filesDir, droneInput, personInput)?.let {
+                app.detectorOverride = it
+                Log.i(TAG, "launch extra detector override -> ${it.encode()}")
+            }
         }
 
         /** `960x540` -> Size(960, 540); anything else -> null (the default size is used). */

@@ -114,6 +114,7 @@ class DualDetectorTest {
         assertEquals("clikart:drone-rahul+dfine-s @320", d320.name)
         assertEquals("clikart:rtdetr_v2_drone_rahul_320", d320.drone.name)
         assertEquals("clikart:dfine_small_coco_320", d320.person.name)
+        assertEquals("clikart:drone-rahul+dfine-s @224", DualDetector.clikaRt("/x/rtdetr_v2_drone_rahul_224", "/x/dfine_small_coco_256").name)
         val d640 = DualDetector.clikaRt("/x/files/models/rtdetr_v2_drone_rahul", "/x/files/models/dfine_small_coco")
         assertEquals("clikart:drone-rahul+dfine-s", d640.name)
         assertEquals("clikart:rtdetr_v2_drone_rahul", d640.drone.name)

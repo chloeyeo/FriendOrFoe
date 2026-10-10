@@ -6,6 +6,7 @@ import android.system.Os
 import android.util.Log
 import com.chloeyeo.friendorfoe.BuildConfig
 import com.chloeyeo.friendorfoe.detect.ClikaRtDetector
+import com.chloeyeo.friendorfoe.detect.DetectorConfig
 import com.chloeyeo.friendorfoe.detect.Detectors
 import com.chloeyeo.friendorfoe.detect.DualDetector
 import com.chloeyeo.friendorfoe.detect.Frame
@@ -53,9 +54,13 @@ class FofApplication : Application() {
     lateinit var prefs: Prefs
         private set
 
+    /** A process-only detector choice from the `drone_input` / `person_input` launch extras; wins over the pref. */
+    @Volatile
+    var detectorOverride: DetectorConfig? = null
+
     /** The process-singleton coordinator (D-03); the activity observes it and never closes it. */
     val coordinator: IffCoordinator by lazy {
-        IffCoordinator(Detectors.create(prefs.detectorConfig), FakeSignalSource(), offlineProbe = OfflineProbe(this))
+        IffCoordinator(Detectors.create(detectorOverride ?: prefs.detectorConfig), FakeSignalSource(), offlineProbe = OfflineProbe(this))
     }
 
     /** True while the load job runs; the activity's `model loading… N s` ticker only runs while this is set. */
@@ -117,7 +122,7 @@ class FofApplication : Application() {
             is ClikaRtDetector -> {
                 {
                     val t = detector.open()
-                    Log.i(TAG, "runtime up: load ${t.loadMs} ms warm ${t.warmupMs} ms threads $threads")
+                    Log.i(TAG, "runtime up: load ${t.loadMs} ms warm ${t.warmupMs} ms threads $threads device ${t.device} dtype ${t.dtype}")
                     "load ${"%.1f".format(t.loadMs / 1000.0)} s · warm ${t.warmupMs} ms · $threads thr"
                 }
             }
@@ -131,7 +136,8 @@ class FofApplication : Application() {
                     Log.i(
                         TAG,
                         "runtime up: ${detector.drone.name} load ${t.drone.loadMs} ms warm ${t.drone.warmupMs} ms + " +
-                            "${detector.person.name} load ${t.person.loadMs} ms warm ${t.person.warmupMs} ms threads $threads",
+                            "${detector.person.name} load ${t.person.loadMs} ms warm ${t.person.warmupMs} ms threads $threads " +
+                            "device ${t.drone.device}/${t.person.device} dtype ${t.drone.dtype}/${t.person.dtype}",
                     )
                     "${detector.drone.classMap.tag} ${secs(t.drone.loadMs)}+${secs(t.drone.warmupMs)} · " +
                         "${detector.person.classMap.tag} ${secs(t.person.loadMs)}+${secs(t.person.warmupMs)} · $threads thr"
