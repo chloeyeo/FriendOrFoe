@@ -1,6 +1,8 @@
 package com.chloeyeo.friendorfoe.ui.settings
 
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
+import com.chloeyeo.friendorfoe.signal.FakeMode
+import com.chloeyeo.friendorfoe.signal.SignalChoice
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -28,6 +30,15 @@ class SettingsFormTest {
         assertEquals(SettingsForm.Result.Valid(values), form.parse())
         val fake = values.copy(detector = DetectorConfig.Fake)
         assertEquals(SettingsForm.Result.Valid(fake), SettingsForm.from(fake).parse())
+    }
+
+    @Test
+    fun signalChoiceAndFakeModeSurviveTheForm() {
+        val v = values.copy(signalChoice = SignalChoice.FAKE, fakeMode = FakeMode.REPLAY)
+        assertEquals(SettingsForm.Result.Valid(v), SettingsForm.from(v).parse())
+        val usb = SettingsForm.from(v).copy(signalChoice = SignalChoice.USB).parse() as SettingsForm.Result.Valid
+        assertEquals(SignalChoice.USB, usb.values.signalChoice)
+        assertEquals(SignalChoice.AUTO, values.signalChoice) // the default: gadget when attached, else fake
     }
 
     @Test

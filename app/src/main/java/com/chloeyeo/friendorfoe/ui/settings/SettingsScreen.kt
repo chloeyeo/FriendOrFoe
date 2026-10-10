@@ -33,6 +33,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
+import com.chloeyeo.friendorfoe.signal.FakeMode
+import com.chloeyeo.friendorfoe.signal.SignalChoice
 import com.chloeyeo.friendorfoe.ui.ChromeButton
 import com.chloeyeo.friendorfoe.ui.theme.FriendOrFoeTheme
 import com.chloeyeo.friendorfoe.ui.theme.IffRed
@@ -91,7 +93,7 @@ fun SettingsScreen(
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Section("Mode")
-                Toggle("Demo mode (scripted scenario, fake signal source)", form.demoMode) { form = form.copy(demoMode = it) }
+                Toggle("Demo mode (scripted scenario instead of the camera)", form.demoMode) { form = form.copy(demoMode = it) }
 
                 Section("Detector")
                 Choice(DetectorKind.entries, form.detectorKind, { it.label }) { form = form.copy(detectorKind = it) }
@@ -114,11 +116,22 @@ fun SettingsScreen(
                 }
 
                 Section("Gadget")
+                Choice(SignalChoice.entries, form.signalChoice, { it.label }) { form = form.copy(signalChoice = it) }
                 Text(
-                    if (form.demoMode) "Fake signal source (demo mode)" else "USB gadget (reader on USB OTG)",
+                    when (form.signalChoice) {
+                        SignalChoice.AUTO -> "USB gadget when attached, otherwise the fake signal source"
+                        SignalChoice.USB -> "USB gadget only (reader on USB OTG); none attached = UNKNOWN · no gadget"
+                        SignalChoice.FAKE -> "Fake signal source only (scripted answers)"
+                    },
                     color = OnSurfaceMuted,
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                if (form.signalChoice != SignalChoice.USB) {
+                    Text("Fake answer", color = OnSurfaceMuted, style = MaterialTheme.typography.bodyMedium)
+                    for (row in FakeMode.entries.chunked(4)) {
+                        Choice(row, form.fakeMode, { it.name.lowercase() }) { form = form.copy(fakeMode = it) }
+                    }
+                }
                 TextInput("challengerId", form.challengerId, errors[Field.CHALLENGER_ID], KeyboardType.Number) {
                     form = form.copy(challengerId = it)
                 }
