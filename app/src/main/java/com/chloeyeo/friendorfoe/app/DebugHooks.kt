@@ -23,6 +23,33 @@ object DebugHooks {
     @Volatile
     var logRawRows: Boolean = false
 
+    /**
+     * Set by the `still_frame` launch extra: the pixels of `filesDir/dumps/still.png`, analysed instead of every
+     * camera frame (with the camera frame's timestamp), so crop rounds can be timed on a known drone photo.
+     */
+    @Volatile
+    var stillFrame: Frame? = null
+
+    /** Decodes `filesDir/dumps/still.png` (pushed with `run-as`) for [stillFrame]; null when missing or unreadable. */
+    fun loadStill(context: Context): Frame? {
+        val file = File(context.filesDir, "dumps/still.png")
+        if (!file.isFile) return null
+        val bytes = file.readBytes()
+        return decode(bytes)
+    }
+
+    private fun decode(bytes: ByteArray): Frame? {
+        val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+        try {
+            val rgba = ByteArray(bitmap.width * bitmap.height * 4)
+            bitmap.copyPixelsToBuffer(ByteBuffer.wrap(rgba))
+            return Frame(bitmap.width, bitmap.height, rgba)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     /** Set to dump the next frame [FofApplication.runTick] sees. */
     @Volatile
     var dumpNextFrame: Boolean = false
@@ -45,16 +72,7 @@ object DebugHooks {
     /** Decodes the APK asset [assetPath] into a tightly packed RGBA [Frame]. */
     fun assetFrame(context: Context, assetPath: String): Frame {
         val bytes = context.assets.open(assetPath).use { it.readBytes() }
-        val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-            ?: throw IllegalArgumentException("not an image: $assetPath")
-        try {
-            val rgba = ByteArray(bitmap.width * bitmap.height * 4)
-            bitmap.copyPixelsToBuffer(ByteBuffer.wrap(rgba))
-            return Frame(bitmap.width, bitmap.height, rgba)
-        } finally {
-            bitmap.recycle()
-        }
+        return decode(bytes) ?: throw IllegalArgumentException("not an image: $assetPath")
     }
 
     /** One `FoF` log line per raw row (`prefix id label score l t r b`), then `prefix rows=N`; returns the lines. */

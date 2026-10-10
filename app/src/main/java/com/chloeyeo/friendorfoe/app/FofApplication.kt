@@ -76,9 +76,13 @@ class FofApplication : Application() {
     /** The 10 fps motion path's per-second numbers (written by the motion executor only). */
     private val motionStats = MotionStats()
 
-    /** The detection half of the strip note (`detect 2.6 s (2.0+0.6)`, drone + person); null until a tick succeeded. */
+    /** The detection half of the strip note (`detect 0.8 s crop / 2.3 s full`); null until a tick succeeded. */
     @Volatile
     private var detectNote: String? = null
+
+    /** The last crop round's and the last full round's detection time (ms), 0 before the first of each. Runtime lane. */
+    private var lastCropRoundMs = 0L
+    private var lastFullRoundMs = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -139,6 +143,12 @@ class FofApplication : Application() {
                             "${detector.person.name} load ${t.person.loadMs} ms warm ${t.person.warmupMs} ms threads $threads " +
                             "device ${t.drone.device}/${t.person.device} dtype ${t.drone.dtype}/${t.person.dtype}",
                     )
+                    val crop = detector.cropDrone
+                    when {
+                        crop == null -> Log.i(TAG, "crop model: none, crop rounds run on ${detector.drone.name}")
+                        t.crop != null -> Log.i(TAG, "crop model: ${crop.name} load ${t.crop.loadMs} ms warm ${t.crop.warmupMs} ms")
+                        else -> Log.w(TAG, "crop model ${crop.name} did not open (${detector.cropOpenFailure?.take(120)}), crop rounds run on ${detector.drone.name}")
+                    }
                     "${detector.drone.classMap.tag} ${secs(t.drone.loadMs)}+${secs(t.drone.warmupMs)} · " +
                         "${detector.person.classMap.tag} ${secs(t.person.loadMs)}+${secs(t.person.warmupMs)} · $threads thr"
                 }
@@ -174,7 +184,9 @@ class FofApplication : Application() {
      * for `ModelverseException`, `IOException` and `serve NNN`: the failure becomes a note, the lane survives and
      * the next frame retries.
      */
-    fun runTick(frame: Frame) {
+    fun runTick(cameraFrame: Frame) {
+        val still = if (BuildConfig.DEBUG) DebugHooks.stillFrame else null
+        val frame = still?.let { Frame(it.width, it.height, it.rgba, 0, cameraFrame.timestampNanos) } ?: cameraFrame
         if (BuildConfig.DEBUG && DebugHooks.dumpNextFrame) {
             DebugHooks.dumpNextFrame = false
             try {
@@ -192,12 +204,17 @@ class FofApplication : Application() {
             val st = coordinator.state.value
             val dual = coordinator.detector as? DualDetector
             val detectSecs = "%.1f".format(Locale.US, st.status.msPerFrame / 1000.0)
-            if (dual != null) {
-                // The per-model split on the strip, e.g. `track 10.0 fps · detect 2.6 s (2.0+0.6)` (drone + person).
-                detectNote = "detect $detectSecs s (${"%.1f".format(Locale.US, dual.lastDroneMs / 1000.0)}+" +
-                    "${"%.1f".format(Locale.US, dual.lastPersonMs / 1000.0)})"
+            val plan = coordinator.lastPlan
+            if (dual != null && plan != null) {
+                // The round types on the strip, e.g. `detect 0.8 s crop / 2.3 s full · track 10.0 fps`.
+                if (plan.full) lastFullRoundMs = st.status.msPerFrame else lastCropRoundMs = st.status.msPerFrame
+                detectNote = listOfNotNull(
+                    lastCropRoundMs.takeIf { it > 0 }?.let { "${secs(it)} crop" },
+                    lastFullRoundMs.takeIf { it > 0 }?.let { "${secs(it)} full" },
+                ).joinToString(" / ", prefix = "detect ")
                 Log.i(TAG, "tick ${st.status.msPerFrame} ms (${dual.lastDroneMs} drone + ${dual.lastPersonMs} person) " +
-                    "${"%.2f".format(st.status.fps)} fps tracks=${st.tracks.size} motion ${"%.1f".format(Locale.US, motionStats.fps)} fps")
+                    "${plan.kind} crops=${plan.crops.size} person=${plan.person} " +
+                    "${"%.2f".format(Locale.US, st.status.fps)} fps tracks=${st.tracks.size} motion ${"%.1f".format(Locale.US, motionStats.fps)} fps")
             } else {
                 detectNote = "detect $detectSecs s"
                 Log.i(TAG, "tick ${st.status.msPerFrame} ms ${"%.2f".format(st.status.fps)} fps tracks=${st.tracks.size}")
@@ -213,7 +230,7 @@ class FofApplication : Application() {
     /**
      * One 10 fps motion step on the camera controller's `motion` executor: moves the tracked boxes
      * ([IffCoordinator.motionTick]) and, once per second, logs `motion F fps median M ms/tick sample S ms tracks=K`
-     * and refreshes the strip note (`track 9.8 fps · detect 2.6 s (…)`). Never touches the runtime lane.
+     * and refreshes the strip note (`detect 0.8 s crop / 2.3 s full · track 10 fps`). Never touches the runtime lane.
      */
     fun runMotionTick(gray: GrayFrame) {
         val t0 = System.nanoTime()
@@ -234,11 +251,11 @@ class FofApplication : Application() {
         refreshNote()
     }
 
-    /** `track F fps · <detectNote>` on the strip, once a detection tick succeeded and while ticks are not failing. */
+    /** `<detectNote> · track F fps` on the strip, once a detection tick succeeded and while ticks are not failing. */
     private fun refreshNote() {
         val detect = detectNote ?: return
         if (tickFailed || runtimeLoading) return
-        val note = "track ${"%.1f".format(Locale.US, motionStats.fps)} fps · $detect"
+        val note = "$detect · track ${"%.0f".format(Locale.US, motionStats.fps)} fps"
         coordinator.setStatus { it.copy(modelNote = note) }
     }
 
@@ -254,7 +271,7 @@ class FofApplication : Application() {
     companion object {
         private const val TAG = "FoF"
 
-        private fun secs(ms: Long): String = "%.1f s".format(ms / 1000.0)
+        private fun secs(ms: Long): String = "%.1f s".format(Locale.US, ms / 1000.0)
 
         fun from(context: Context): FofApplication = context.applicationContext as FofApplication
 

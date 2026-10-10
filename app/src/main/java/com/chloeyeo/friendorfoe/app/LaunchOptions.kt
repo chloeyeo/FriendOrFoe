@@ -7,6 +7,7 @@ import com.chloeyeo.friendorfoe.BuildConfig
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
 import com.chloeyeo.friendorfoe.detect.LoadKnobs
 import com.chloeyeo.friendorfoe.detect.ModelDirs
+import com.chloeyeo.friendorfoe.detect.RoundScheduler
 import java.io.File
 
 /**
@@ -27,6 +28,10 @@ import java.io.File
  * | `clika_dtype` | `--es clika_dtype float16` | weight dtype for both models, this process only (`float16` / `bfloat16`; `float32` = the checkpoint's own) |
  * | `drone_input` | `--ei drone_input 256` | dual detector, drone snapshot `files/models/rtdetr_v2_drone_rahul_<N>` (320/256/224/160), this process only |
  * | `person_input` | `--ei person_input 224` | dual detector, person snapshot `files/models/dfine_small_coco_<N>` (320/256/224), this process only |
+ * | `person_model` | `--es person_model dfine_nano_coco_320` | dual detector, person snapshot `files/models/<name>` (a plain dir name), this process only |
+ * | `crop_model` | `--es crop_model rtdetr_v2_drone_rahul_crop160` / `none` | crop-round drone snapshot `files/models/<name>`; `none` runs crops on the full-frame drone model; this process only |
+ * | `still_frame` | `--ez still_frame true` | analyse `files/dumps/still.png` (push with `run-as`) instead of every camera frame, e.g. a drone photo for timing crop rounds |
+ * | `full_every` / `person_every` / `max_crops` | `--ei full_every 4 --ei person_every 3 --ei max_crops 3` | round scheduler: a full scan every Nth round (and at least every 3 s), the person model every Nth round, crop rounds for at most N tracked drones; this process only |
  *
  * [from] must run BEFORE `app.coordinator` is first touched: the lazy singleton reads the detector pref once.
  */
@@ -44,6 +49,11 @@ data class LaunchOptions(
             if (!BuildConfig.DEBUG || intent == null) return LaunchOptions()
             intent.getStringExtra("detector")?.let { applyDetector(app, it) }
             DebugHooks.logRawRows = intent.getBooleanExtra("log_raw", false)
+            DebugHooks.stillFrame = if (intent.getBooleanExtra("still_frame", false)) {
+                DebugHooks.loadStill(app).also { Log.i(TAG, "launch extra still_frame -> ${it ?: "dumps/still.png missing or unreadable"}") }
+            } else {
+                null
+            }
             if (intent.getBooleanExtra("motion_bench", false)) {
                 // After the model load (15 s), warm (5 rounds), beside the running detector, as the motion executor runs.
                 Thread({
@@ -79,6 +89,32 @@ data class LaunchOptions(
             ModelDirs.dualFor(app.filesDir, droneInput, personInput)?.let {
                 app.detectorOverride = it
                 Log.i(TAG, "launch extra detector override -> ${it.encode()}")
+            }
+            intent.getStringExtra("person_model")?.trim()?.let { name ->
+                val base = (app.detectorOverride ?: app.prefs.detectorConfig) as? DetectorConfig.Dual
+                if (base != null && ModelDirs.isPlainName(name)) {
+                    app.detectorOverride = base.copy(personDir = File(File(base.personDir).parentFile, name).path)
+                    Log.i(TAG, "launch extra person_model -> ${app.detectorOverride?.encode()}")
+                } else {
+                    Log.w(TAG, "launch extra person_model ignored (needs the dual detector and a plain dir name)")
+                }
+            }
+            intent.getStringExtra("crop_model")?.trim()?.let { name ->
+                when {
+                    name == "none" -> ModelDirs.cropName = null
+                    ModelDirs.isPlainName(name) -> ModelDirs.cropName = name
+                    else -> Log.w(TAG, "launch extra crop_model ignored (not a plain dir name)")
+                }
+                Log.i(TAG, "launch extra crop_model -> ${ModelDirs.cropName}")
+            }
+            if (intent.hasExtra("full_every") || intent.hasExtra("person_every") || intent.hasExtra("max_crops")) {
+                val d = RoundScheduler.Config()
+                RoundScheduler.Config.current = d.copy(
+                    fullEvery = intent.getIntExtra("full_every", d.fullEvery).coerceIn(1, 20),
+                    personEvery = intent.getIntExtra("person_every", d.personEvery).coerceIn(1, 20),
+                    maxCrops = intent.getIntExtra("max_crops", d.maxCrops).coerceIn(0, 8),
+                )
+                Log.i(TAG, "launch extra rounds ${RoundScheduler.Config.current}")
             }
         }
 
