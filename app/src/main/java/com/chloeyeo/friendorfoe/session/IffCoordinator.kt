@@ -174,6 +174,7 @@ class IffCoordinator(
             if (plan != null) {
                 scheduler.done(plan, t1)
                 tracker.personStickyMs = scheduler.personStickyMs()
+                tracker.droneStickyMs = scheduler.droneStickyMs()
             }
             // The locked box and the held verdicts stay in the tracker, so the drone's next detection lands on them
             // (windows and holds that are over are closed first, so their tracks time out normally).

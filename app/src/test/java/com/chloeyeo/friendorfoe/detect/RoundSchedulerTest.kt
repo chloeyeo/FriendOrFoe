@@ -81,4 +81,21 @@ class RoundSchedulerTest {
         run(s, 5, 100, emptyList())
         assertEquals(1500L, s.personStickyMs())
     }
+
+    @Test
+    fun droneStickyFollowsTheRoundTimeBetweenOneAndFiveSeconds() {
+        val s = RoundScheduler()
+        assertEquals(5_000L, s.droneStickyMs())
+        s.done(RoundPlan.FULL, 1_000L)
+        s.done(RoundPlan.FULL, 1_540L)
+        assertEquals(1_350L, s.droneStickyMs())
+        val fast = RoundScheduler()
+        fast.done(RoundPlan.FULL, 0L)
+        fast.done(RoundPlan.FULL, 290L)
+        assertEquals(1_000L, fast.droneStickyMs())
+        val slow = RoundScheduler()
+        slow.done(RoundPlan.FULL, 0L)
+        slow.done(RoundPlan.FULL, 4_400L)
+        assertEquals(5_000L, slow.droneStickyMs())
+    }
 }

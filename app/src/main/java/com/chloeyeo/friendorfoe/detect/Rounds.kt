@@ -40,6 +40,8 @@ class RoundScheduler(val config: Config = Config.current) {
         val personEvery: Int = 3,
         val maxCrops: Int = 3,
         val basePersonStickyMs: Long = 1_500L,
+        val baseDroneStickyMs: Long = 1_000L,
+        val maxDroneStickyMs: Long = 5_000L,
     ) {
         companion object {
             /** Read when a scheduler is built; the debug launch extras may set it before the coordinator exists. */
@@ -89,6 +91,15 @@ class RoundScheduler(val config: Config = Config.current) {
     fun personStickyMs(): Long {
         val interval = personIntervalMs ?: roundIntervalMs?.let { it * max(1, config.personEvery) } ?: return config.basePersonStickyMs
         return max(config.basePersonStickyMs, interval * 3 / 2)
+    }
+
+    /**
+     * How long a drone track may coast without a detection: 2.5 x the measured round interval (about two missed
+     * rounds), between [Config.baseDroneStickyMs] and [Config.maxDroneStickyMs]; the max before two rounds exist.
+     */
+    fun droneStickyMs(): Long {
+        val interval = roundIntervalMs ?: return config.maxDroneStickyMs
+        return (interval * 5 / 2).coerceIn(config.baseDroneStickyMs, config.maxDroneStickyMs)
     }
 
     private fun ewma(old: Long?, sample: Long): Long = if (old == null) sample else (old + sample) / 2

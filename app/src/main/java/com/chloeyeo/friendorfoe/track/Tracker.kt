@@ -11,16 +11,22 @@ import com.chloeyeo.friendorfoe.detect.ObjClass
  * box that flickers keeps its ring. Two coasting rules, one per overload:
  * - `update(detections)` (legacy, frame count): a track is dropped after more than [maxMisses] consecutive misses;
  * - `update(detections, nowMillis)` (the runtime lane, wall clock, D-09): a track is dropped once more than
- *   [droneStickyMs] (DRONE, 5 s) or [personStickyMs] (PERSON, 1.5 s) have passed since it was last seen, so the
- *   window is the same at 0.5 fps and at 2 fps.
+ *   [droneStickyMs] (DRONE, 5 s until the coordinator sets it from the round time) or [personStickyMs] (PERSON,
+ *   1.5 s) have passed since it was last seen, so the window is the same at 0.5 fps and at 2 fps.
  * Not thread-safe: call it from the runtime lane only (or under the owner's lock).
  */
 class Tracker(
     private val iouThreshold: Float = 0.3f,
     private val maxMisses: Int = 3,
-    private val droneStickyMs: Long = 5_000L,
+    droneStickyMs: Long = 5_000L,
     personStickyMs: Long = 1_500L,
 ) {
+    /**
+     * How long a DRONE track coasts without a match (wall-clock overload). The coordinator lowers it to a few
+     * measured round times (`RoundScheduler.droneStickyMs`), so a fast detector drops a box soon after the drone left.
+     */
+    var droneStickyMs: Long = droneStickyMs
+
     /**
      * How long a PERSON track coasts without a match (wall-clock overload). The coordinator raises it from the
      * measured round time while the person model runs only every few rounds (`RoundScheduler.personStickyMs`).
