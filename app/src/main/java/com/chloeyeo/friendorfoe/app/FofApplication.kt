@@ -11,7 +11,6 @@ import com.chloeyeo.friendorfoe.detect.Detectors
 import com.chloeyeo.friendorfoe.detect.DualDetector
 import com.chloeyeo.friendorfoe.detect.Frame
 import com.chloeyeo.friendorfoe.session.IffCoordinator
-import com.chloeyeo.friendorfoe.signal.FakeSignalSource
 import com.chloeyeo.friendorfoe.track.GrayFrame
 import com.chloeyeo.friendorfoe.track.MotionStats
 import io.clika.modelverse.Modelverse
@@ -60,7 +59,7 @@ class FofApplication : Application() {
 
     /** The process-singleton coordinator (D-03); the activity observes it and never closes it. */
     val coordinator: IffCoordinator by lazy {
-        IffCoordinator(Detectors.create(detectorOverride ?: prefs.detectorConfig), FakeSignalSource(), offlineProbe = OfflineProbe(this))
+        SignalWiring.coordinator(this, prefs, Detectors.create(detectorOverride ?: prefs.detectorConfig))
     }
 
     /** True while the load job runs; the activity's `model loading… N s` ticker only runs while this is set. */
