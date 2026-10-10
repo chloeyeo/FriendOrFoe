@@ -217,6 +217,50 @@ keeps `docs/GADGET_LINK.md` current; the phone side only depends on the lines ab
 developed on the bench over USB-C to a laptop, the whole link can be exercised before the phone exists:
 `laptop/gadget_cli.py` sends the same JSON lines from the laptop and prints the answers.
 
+### How the phone, the reader gadget and the drone gadget work together
+
+The phone is on the **asking** side, but it does not do the radio itself: the **reader gadget** plugged into
+its USB-C port does. The drone side is answered by the **drone gadget**. (The earlier idea of a second phone
+answering with a QR code is dropped.)
+
+1. **Phone A detects the drone** with the camera, on-device and offline (Phase 2).
+2. **You tap the drone box.** The phone locks that box for the 10 s challenge window and tells the reader
+   gadget over USB to challenge.
+3. **The reader gadget does the radio part.** It sends one authenticated challenge with a fresh 128-bit nonce
+   to the drone gadget, receives the answer and verifies the HMAC tag itself (Ihan's Arduino C/C++ firmware).
+4. **The reader gadget reports to the phone over USB:** verdict, signal strength (RSSI) and response time.
+5. **The phone re-checks** the round-trip time, the signal strength and that the nonce was never seen
+   before, then draws the green or red ring on the box that was tapped. The box lock keeps the answer on that
+   box even if the detector loses the drone for a moment.
+
+So the phone receives the IFF *result* over USB and decides what to show; the gadget handles the radio and
+the crypto. This wiring is Phase 4 (gadget link, Kotlin USB signal source) and Phase 5 (tap → challenge →
+verdict → ring). Until the hardware is attached, `FakeSignalSource` replays scripted answers, so the ring
+logic can be built and tested without the gadget.
+
+**How the phone is connected to the reader gadget**
+
+- **Cable:** the gadget plugs into phone A's USB-C port (directly or through an OTG adapter). The phone is the
+  USB host and powers the gadget.
+- **Driver:** the gadget enumerates as a USB CDC serial device; the app opens it with `usb-serial-for-android`,
+  which also drives the CP210x, CH34x and FTDI bridge chips if the board uses one (`signal/UsbGadgetSignalSource`).
+- **Settings:** 115200 baud, 8N1, DTR asserted on open.
+- **Protocol:** one JSON object per line in both directions (the lines in the block above). The phone also
+  times the USB round trip, from writing the `challenge` line to reading the `answer` line, against a 2.5 s
+  budget alongside the gadget's own `responseMs`.
+
+Two practical consequences:
+
+- **The single USB-C port is taken by the gadget** during the demo, so adb and screen mirroring over USB
+  cannot run at the same time: mirror over adb-over-Wi-Fi on the laptop LAN; the phone does not charge while
+  it hosts the gadget.
+- **The gadget can be tested without the phone:** `laptop/gadget_cli.py` sends the same JSON lines from the
+  laptop over the board's serial port.
+
+Still open for Ihan to decide and write into `docs/GADGET_LINK.md`: which board (native USB or a serial
+bridge chip), which radio module, the USB vendor and product ID (the app may need a custom probe table), and
+whether the board resets when the port is opened.
+
 ---
 
 ## 4. Plan
