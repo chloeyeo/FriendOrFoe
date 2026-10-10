@@ -28,21 +28,25 @@ import java.util.concurrent.atomic.AtomicBoolean
  * commands in, JSON lines out, the STATUS handshake, request-id attribution, timeouts) lives in [ReaderLink]; this
  * class only finds, opens, reads and closes the port.
  *
+ * **Control lines, as Ihan's host:** on the C3's USB-Serial/JTAG, DTR together with an RTS change can drop the chip
+ * into download mode, and it talks fine without DTR, so 303a:1001 is opened with DTR and RTS **off**; any other CDC
+ * board gets DTR on and RTS off. (pySerial sets them before open; Android can only set them right after.)
+ *
  * Lifecycle: [start] registers for USB attach/detach and the permission answer and polls every 2 s; the first
- * serial device found is asked for permission once per attach (system dialog), then opened and handed to [link],
- * which starts the STATUS handshake. The reader
+ * serial device found is asked for permission once per attach (system dialog; `UsbAttachActivity` and its device
+ * filter let Android remember it), then opened and handed to [link], which starts the STATUS handshake. The reader
  * thread feeds every byte to [link] in a loop (the C3 only sends while the host reads). Unplug, a read or write
  * error, or a detach broadcast closes the port; the 2 s poll reopens it on re-plug. No USB error crashes the app.
  *
  * Threading: connection management and [ReaderLink.tick] (every 250 ms) on one `gadget-link` thread, reading on one
  * `gadget-read` thread per open port; [challenge] writes from the caller's coroutine.
  *
- * @param prober the driver lookup; [UsbSerialProber.getDefaultProber] knows CDC ACM (by interface class), FTDI,
- *   CP210x, CH34x and Prolific. A board the default table misses needs [proberWithCdcAcm].
+ * @param prober the driver lookup: the default table (CDC ACM by interface class, FTDI, CP210x, CH34x, Prolific)
+ *   plus the C3's 303a:1001 mapped to CDC ACM explicitly, in case the composite CDC + JTAG device is not claimed.
  */
 class UsbGadgetSignalSource(
     context: Context,
-    private val prober: () -> UsbSerialProber = { UsbSerialProber.getDefaultProber() },
+    private val prober: () -> UsbSerialProber = proberWithCdcAcm(ESP_VID to ESP_USB_JTAG_PID),
     clock: () -> Long = SystemClock::elapsedRealtime,
 ) : SignalSource {
     override val kind: SignalKind = SignalKind.USB_GADGET
@@ -207,18 +211,24 @@ class UsbGadgetSignalSource(
             listener?.onLink(false, "gadget ${ids(device)} has no serial port")
             return
         }
+        val native = isEspUsbJtag(device.vendorId, device.productId)
         try {
             p.open(connection)
             p.setParameters(BAUD, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-            p.setDTR(true)
+            p.setDTR(dtrOnOpen(device.vendorId, device.productId))
+            p.setRTS(false)
         } catch (e: IOException) {
+            closeQuietly(p)
+            listener?.onLink(false, "gadget ${ids(device)} open failed: ${e.message}")
+            return
+        } catch (e: UnsupportedOperationException) {
             closeQuietly(p)
             listener?.onLink(false, "gadget ${ids(device)} open failed: ${e.message}")
             return
         }
         port = p
         listener?.onLine(
-            "gadget port open · ${ids(device)} · ${driver.javaClass.simpleName} · handshaking",
+            "gadget port open · ${ids(device)} · ${driver.javaClass.simpleName} · DTR ${if (native) "off" else "on"} · RTS off · handshaking",
         )
         Thread({ readLoop(p) }, "gadget-read").apply { isDaemon = true }.start()
         link.attach { bytes -> writeOrDrop(p, bytes) }
@@ -281,6 +291,15 @@ class UsbGadgetSignalSource(
         private const val READ_TIMEOUT_MS = 200
         private const val WRITE_TIMEOUT_MS = 500
         private const val ACTION_USB_PERMISSION = "com.chloeyeo.friendorfoe.USB_PERMISSION"
+
+        /** Espressif's vendor id and the ESP32-C3/S3 built-in USB-Serial/JTAG product id (Ihan's reader). */
+        const val ESP_VID = 0x303A
+        const val ESP_USB_JTAG_PID = 0x1001
+
+        fun isEspUsbJtag(vid: Int, pid: Int): Boolean = vid == ESP_VID && pid == ESP_USB_JTAG_PID
+
+        /** Ihan's rule (serial_connection.py): DTR off for the C3's USB-Serial/JTAG, on for any other CDC board. */
+        fun dtrOnOpen(vid: Int, pid: Int): Boolean = !isEspUsbJtag(vid, pid)
 
         /**
          * The default prober plus explicit VID/PID pairs mapped to [CdcAcmSerialDriver], for a native-USB board
