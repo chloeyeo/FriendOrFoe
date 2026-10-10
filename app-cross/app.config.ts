@@ -55,6 +55,9 @@ const config: ExpoConfig = {
     bundleIdentifier: 'com.chloeyeo.friendorfoe.cross',
     // Signing team for `expo run:ios --device` (the developer's own, so it comes from the environment, never the repo).
     appleTeamId: process.env.APPLE_TEAM_ID || undefined,
+    infoPlist: {
+      NSCameraUsageDescription: 'The observer camera finds people, drones and birds on the phone, offline.',
+    },
   },
   web: { favicon: './assets/favicon.png' },
   plugins: [
@@ -71,6 +74,8 @@ const config: ExpoConfig = {
           usesCleartextTraffic: true,
           extraMavenRepos: [fileUrl(mavenRepo), 'https://jitpack.io'],
         },
+        // The iPhone camera pane keeps frames level with AVCaptureDevice.RotationCoordinator (iOS 17).
+        ios: { deploymentTarget: '17.0' },
       },
     ],
     ['./plugins/withFofAndroid', { licenseFile }],

@@ -43,6 +43,7 @@ function evidence(v: Extract<IffState, { kind: 'VERDICT' }>): string | null {
 
 export function tagFor(track: TrackUi, nowMs: number): TrackTag {
   if (track.cls === 'PERSON') return { text: 'person', tone: 'neutral', detail: null, countdown: null };
+  if (track.cls === 'BIRD') return { text: 'bird', tone: 'neutral', detail: null, countdown: null };
   const iff = track.iff;
   switch (iff.kind) {
     case 'UNCHALLENGED':

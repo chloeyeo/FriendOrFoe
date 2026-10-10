@@ -8,7 +8,7 @@ import { colors, mono, toneColor } from './theme';
 import { useNow } from './format';
 
 export interface CameraProps {
-  detector: 'clikart' | 'http' | 'none';
+  detector: 'clikart' | 'http' | 'coreml' | 'none';
   serveUrl: string;
   intervalMs: number;
   thumbnailUrl: string;
@@ -39,8 +39,13 @@ const clamp = (lo: number, v: number, hi: number) => Math.min(hi, Math.max(lo, v
 function objectSummary(tracks: TrackUi[]): string {
   if (!tracks.length) return 'No targets';
   const drones = tracks.filter((t) => t.cls === 'DRONE').length;
-  const people = tracks.length - drones;
-  return [drones ? `${drones} drone${drones === 1 ? '' : 's'}` : '', people ? `${people} ${people === 1 ? 'person' : 'people'}` : '']
+  const people = tracks.filter((t) => t.cls === 'PERSON').length;
+  const birds = tracks.filter((t) => t.cls === 'BIRD').length;
+  return [
+    drones ? `${drones} drone${drones === 1 ? '' : 's'}` : '',
+    people ? `${people} ${people === 1 ? 'person' : 'people'}` : '',
+    birds ? `${birds} bird${birds === 1 ? '' : 's'}` : '',
+  ]
     .filter(Boolean)
     .join(' · ');
 }
@@ -136,9 +141,9 @@ export function ObservationPanel({ tracks, status, camera, onPreviewLayout, onTa
   );
 }
 
-/** People first, drones last: a drone's tag is what the observer reads, so it is drawn on top. */
+/** Drones last: a drone's tag is what the observer reads, so it is drawn on top. */
 function drawOrder(tracks: TrackUi[]): TrackUi[] {
-  return [...tracks.filter((t) => t.cls === 'PERSON'), ...tracks.filter((t) => t.cls === 'DRONE')];
+  return [...tracks.filter((t) => t.cls !== 'DRONE'), ...tracks.filter((t) => t.cls === 'DRONE')];
 }
 
 const Grid = memo(function Grid({ width, height }: { width: number; height: number }) {

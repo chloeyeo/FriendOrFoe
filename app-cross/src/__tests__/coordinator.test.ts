@@ -116,6 +116,17 @@ describe('IffCoordinator', () => {
     expect(iffOf(c, id)).toMatchObject({ verdict: 'FOE', reason: 'unknown drone id' });
   });
 
+  it('holds an unconfirmed drone back until it is seen in confirmHits frames', () => {
+    const { c } = setup();
+    c.confirmHits = 2;
+    c.tick(frame([PERSON, DRONE]));
+    expect(c.getState().tracks.map((t) => t.cls)).toEqual(['PERSON']);
+    expect(c.challenge(2)).toBe(false); // not on screen, not challengeable
+    c.tick(frame([PERSON, DRONE]));
+    expect(c.getState().tracks.map((t) => t.cls)).toEqual(['PERSON', 'DRONE']);
+    expect(c.getState().events.filter((e) => e.cls === 'DRONE')).toHaveLength(1);
+  });
+
   it('reset clears everything and drops an answer that arrives afterwards', async () => {
     const { c, advance } = setup('HONEST');
     c.tick(frame([DRONE]));

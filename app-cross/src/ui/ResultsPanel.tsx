@@ -142,7 +142,7 @@ function Detail({ term, value }: { term: string; value: string }) {
 }
 
 function ActivityRow({ event, now }: { event: EventUi; now: number }) {
-  const title = event.cls ? `${event.cls === 'PERSON' ? 'Person' : 'Drone'} detected` : event.text;
+  const title = event.cls ? `${event.cls.charAt(0)}${event.cls.slice(1).toLowerCase()} detected` : event.text;
   return (
     <View style={styles.activity}>
       <View style={styles.activityTop}>

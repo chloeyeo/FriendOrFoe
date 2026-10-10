@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { FofRuntime, hasNativeCamera, type CameraErrorEvent, type CameraFrameEvent } from '../../modules/fof-native';
 import type { EventUi, RawDetection } from '../core/types';
 import { toDetections } from '../detect/dedup';
+import { labelIdFor } from '../detect/labelMap';
 import { parseDetections } from '../detect/detectionsJson';
 import { FakeDetector } from '../detect/fakeDetector';
 import { EventClient } from '../net/eventClient';
@@ -16,6 +17,7 @@ import { acceptedIds, type Settings } from './settings';
 export function detectorName(s: Settings): string {
   if (s.detector === 'clikart') return 'clikart:rtdetr_v2_r18vd';
   if (s.detector === 'http') return 'http:' + s.serveUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  if (s.detector === 'coreml') return 'coreml:yolo11n+drone-yolo11s';
   return 'fake';
 }
 
@@ -82,6 +84,9 @@ export function useSession(settings: Settings) {
     c.reChecks.config = { rttBudgetMs: settings.rttBudgetMs, rssiFloorDbm: settings.rssiFloorDbm, strict: settings.strictPhysical };
     c.challengerId = settings.challengerId;
     c.acceptedDroneIds = acceptedIds(settings);
+    // The iPhone detector runs several times a second, so a one-frame false drone can be held back for a frame;
+    // phone A's ClikaRT takes seconds per frame, where waiting a frame would cost seconds.
+    c.confirmHits = settings.detector === 'coreml' ? 2 : 1;
   }, [c, settings]);
 
   // Camera permission, once, on a build with the camera pane.
@@ -121,9 +126,10 @@ export function useSession(settings: Settings) {
       return () => {};
     }
 
-    // On-device ClikaRT: license probe + model open on the runtime lane, with a seconds counter meanwhile.
+    // On-device: ClikaRT (Android: license probe + model open on the runtime lane) or Core ML (iPhone: the two bundled
+    // detectors), with a seconds counter meanwhile.
     if (!FofRuntime) {
-      note('ClikaRT not in this build', false);
+      note('on-device detector not in this build', false);
       return () => {};
     }
     const started = Date.now();
@@ -167,7 +173,12 @@ export function useSession(settings: Settings) {
       let rows: RawDetection[];
       try {
         rows = e.rows
-          ? e.rows.map((r) => ({ labelId: r.labelId, score: r.score, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, label: r.label }))
+          ? e.rows.map((r) => ({
+              labelId: r.model ? labelIdFor(r.model, r.label) : r.labelId,
+              score: r.score,
+              box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom },
+              label: r.label,
+            }))
           : parseDetections(e.body ?? '');
       } catch (err) {
         frameFailed.current = true;

@@ -7,6 +7,7 @@ import { colors, mono } from './theme';
 function detectorLabel(name: string, compact: boolean): string {
   if (name.startsWith('clikart')) return compact ? 'ClikaRT' : 'On-device ClikaRT';
   if (name.startsWith('http')) return compact ? 'Laptop' : 'Laptop serve';
+  if (name.startsWith('coreml')) return compact ? 'Core ML' : 'On-device Core ML';
   if (name === 'fake') return 'Simulated';
   return name;
 }

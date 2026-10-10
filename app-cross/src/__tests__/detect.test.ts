@@ -2,7 +2,7 @@ import { box } from '../core/box';
 import type { Detection } from '../core/types';
 import { dedup, toDetections } from '../detect/dedup';
 import { parseDetections } from '../detect/detectionsJson';
-import { accept, classOf } from '../detect/labelMap';
+import { accept, classOf, labelIdFor } from '../detect/labelMap';
 import { FakeDetector } from '../detect/fakeDetector';
 import { frameTransform, toFrame, toPreview } from '../camera/frameTransform';
 
@@ -10,10 +10,20 @@ const drone = (score: number, b = box(10, 10, 50, 40)): Detection => ({ cls: 'DR
 const person = (score: number, b = box(10, 10, 50, 40)): Detection => ({ cls: 'PERSON', score, box: b });
 
 describe('LabelMap', () => {
-  it('maps person and the drone proxies by id, drops the rest', () => {
+  it('maps person, bird and the drone proxies by id, drops the rest', () => {
     expect(classOf(0)).toBe('PERSON');
-    expect([4, 14, 33].map(classOf)).toEqual(['DRONE', 'DRONE', 'DRONE']);
+    expect(classOf(14)).toBe('BIRD'); // the native app counts it as a drone proxy; here a bird is never challenged
+    expect([4, 33].map(classOf)).toEqual(['DRONE', 'DRONE']);
     expect(classOf(67)).toBeNull(); // cell phone
+  });
+
+  it('maps the iPhone Core ML labels: person and bird from COCO, drones from FofDrone only', () => {
+    expect(labelIdFor('coco', 'person')).toBe(0);
+    expect(classOf(labelIdFor('coco', 'bird'))).toBe('BIRD');
+    expect(labelIdFor('coco', 'airplane')).toBe(-1); // no COCO proxies on the Core ML path
+    expect(labelIdFor('coco', 'laptop')).toBe(-1);
+    expect(classOf(labelIdFor('drone', 'drone'))).toBe('DRONE');
+    expect(classOf(labelIdFor('drone', 'kite'))).toBeNull(); // a label from another model's table
   });
 
   it('applies the per-class floors', () => {

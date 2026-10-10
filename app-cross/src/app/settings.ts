@@ -1,10 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
-import { hasNativeCamera } from '../../modules/fof-native';
+import { FofUsb, hasNativeCamera, onDeviceDetector } from '../../modules/fof-native';
 import { DEFAULT_DRONE_THRESHOLD, DEFAULT_PERSON_THRESHOLD } from '../detect/labelMap';
 import { FAKE_MODES, type FakeMode } from '../signal/fakeSignalSource';
 
-export type DetectorKind = 'clikart' | 'http' | 'fake';
+export type DetectorKind = 'clikart' | 'http' | 'coreml' | 'fake';
 export type SignalKindSetting = 'usb' | 'fake';
 
 /**
@@ -34,25 +35,36 @@ export interface Settings {
   strictPhysical: boolean;
 }
 
+/** FofDrone's floor (see detect/labelMap.ts): 12/13 real drones kept, 4/40 drone-free images still fire. */
+const IOS_DRONE_THRESHOLD = 0.6;
+
 export const DEFAULT_SETTINGS: Settings = {
-  detector: hasNativeCamera ? 'clikart' : 'fake',
+  detector: hasNativeCamera ? onDeviceDetector : 'fake',
   modelDir: '',
   serveUrl: 'http://192.168.43.100:8000',
   threads: 2,
-  intervalMs: 1000,
+  intervalMs: Platform.OS === 'ios' ? 500 : 1000,
   signal: 'fake',
   fakeMode: 'HONEST',
   dashboardUrl: '',
   challengerId: 7,
   acceptedDroneIds: 'RQ-07',
   personThreshold: DEFAULT_PERSON_THRESHOLD,
-  droneThreshold: DEFAULT_DRONE_THRESHOLD,
+  droneThreshold: Platform.OS === 'ios' ? IOS_DRONE_THRESHOLD : DEFAULT_DRONE_THRESHOLD,
   rttBudgetMs: 2500,
   rssiFloorDbm: -70,
   strictPhysical: false,
 };
 
 const KEY = 'fof.settings.v1';
+/** Bumped when a default changes in a way stored settings must follow; see [sanitize]. */
+const SCHEMA = 2;
+
+/** What this build can run: Android ClikaRT + laptop serve, iPhone Core ML, and everywhere the simulated boxes. */
+export function availableDetectors(): DetectorKind[] {
+  if (!hasNativeCamera) return ['fake'];
+  return onDeviceDetector === 'coreml' ? ['coreml', 'fake'] : ['clikart', 'http', 'fake'];
+}
 
 export function acceptedIds(s: Settings): string[] {
   return s.acceptedDroneIds
@@ -70,10 +82,16 @@ export function sanitize(raw: unknown): Settings {
     const v = r[key];
     if (typeof v === typeof DEFAULT_SETTINGS[key]) (out as unknown as Record<string, unknown>)[key] = v;
   }
-  if (!['clikart', 'http', 'fake'].includes(out.detector)) out.detector = DEFAULT_SETTINGS.detector;
-  if (!hasNativeCamera && out.detector !== 'fake') out.detector = 'fake';
-  if (!['usb', 'fake'].includes(out.signal)) out.signal = 'fake';
+  if (!availableDetectors().includes(out.detector)) out.detector = DEFAULT_SETTINGS.detector;
+  if (!['usb', 'fake'].includes(out.signal) || (out.signal === 'usb' && !FofUsb)) out.signal = 'fake';
   if (!FAKE_MODES.includes(out.fakeMode)) out.fakeMode = 'HONEST';
+  // Schema 1 was saved by builds without the iPhone camera: their 'fake' detector, 1 s interval and 0.28 drone floor
+  // were forced or defaulted, not chosen, so they move to this build's defaults once.
+  if (r.schema !== SCHEMA && Platform.OS === 'ios') {
+    if (out.detector === 'fake') out.detector = DEFAULT_SETTINGS.detector;
+    if (out.intervalMs === 1000) out.intervalMs = DEFAULT_SETTINGS.intervalMs;
+    if (out.droneThreshold === DEFAULT_DRONE_THRESHOLD) out.droneThreshold = DEFAULT_SETTINGS.droneThreshold;
+  }
   return out;
 }
 
@@ -88,7 +106,7 @@ export async function loadSettings(): Promise<Settings> {
 
 export async function saveSettings(s: Settings): Promise<void> {
   try {
-    await AsyncStorage.setItem(KEY, JSON.stringify(s));
+    await AsyncStorage.setItem(KEY, JSON.stringify({ ...s, schema: SCHEMA }));
   } catch {
     // Settings still apply for this run.
   }

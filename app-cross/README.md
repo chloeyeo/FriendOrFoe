@@ -109,6 +109,46 @@ adb push <snapshot>/. /sdcard/Android/data/com.chloeyeo.friendorfoe.cross/files/
 `config.json`, `model.safetensors` and `preprocessor_config.json` must be in that directory. Settings → Model
 directory overrides the path.
 
+## iPhone build (on-device Core ML, not ClikaRT)
+
+ClikaRT has no iOS runtime (docs.clika.io → system requirements: Linux, Android, Windows, macOS). The iPhone build
+therefore runs Core ML detectors through Vision in the same camera pane, and everything after the detector is the
+same session code. This is a second screen, not the SC1 path: phone A's ClikaRT is.
+
+| Model | Source | Gives |
+|---|---|---|
+| `FofCoco` (YOLO11n, COCO) | Ultralytics `yolo11n.pt` | person, bird |
+| `FofDrone` (YOLO11s) | [sapoepsilon/yolov11s-drone-detector](https://huggingface.co/sapoepsilon/yolov11s-drone-detector) (Apache-2.0) | drone |
+
+How the models were chosen, measured on 13 real drone photos (DJI Phantom 4, Inspire, Mavic 2/Pro/Mini, FPV racers,
+a VTOL fixed-wing) and 40 drone-free COCO val2017 images:
+
+| Detector | Drones found | Drone-free images that fired |
+|---|---|---|
+| FofDrone at 0.6 (used) | 12/13 | 4/40 (a small potted plant, a real airplane, a bat and a skateboard in the air) |
+| FofDrone at 0.3 | 12/13 | 13/40 |
+| TomSmail/drone-yolo-v1 at 0.6 | 8/13 | 6/40 |
+| COCO airplane/kite proxy at 0.5 | 8/13 | 1/40, and none of the drones FofDrone missed |
+| flying-objects YOLOv8m (rendered sky scenes) | 0/13 | it called every real drone an "airplane" |
+
+On top of the 0.6 floor, a drone is drawn only once it has been matched in two frames. Frames come every 0.5 s on
+the iPhone, so a one-frame false box never shows. Settings → Drone threshold trades misses for false drones.
+Birds are a class of their own in this
+app (`BIRD`): drawn, logged, never challengeable. The native app still counts COCO bird as a drone proxy.
+
+Build on a Mac with **Xcode 27 or newer**. Expo SDK 57's `expo-modules-jsi` does not compile with Xcode 26.3 /
+Swift 6.2 (`SWIFT_RETURNS_RETAINED` on a constructor). You also need CocoaPods and the iPhone in developer mode:
+
+```bash
+scripts/export-coreml.sh
+APPLE_TEAM_ID=<your team id> npx expo run:ios --device --configuration Release
+```
+
+`scripts/export-coreml.sh` builds the compiled models into `modules/fof-native/ios/Models/`. The models are
+gitignored: about 23 MB in total. If `pod install` crawls on the React Native core download (repo1.maven.org can drop to
+about 25 KB/s on one connection), fetch the three release tarballs yourself and point `RCT_TESTONLY_RNCORE_TARBALL_PATH`,
+`RCT_USE_LOCAL_RN_DEP` and `HERMES_ENGINE_TARBALL_PATH` at them.
+
 ## Layout on the phone
 
 The screen follows the window size (`src/ui/layout.ts`). The breakpoints come from phone A in the native app's

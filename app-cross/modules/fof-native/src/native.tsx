@@ -1,6 +1,6 @@
 import { NativeModule, requireNativeView, requireOptionalNativeModule } from 'expo';
 import * as React from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
+import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 
 export interface OpenDetectorResult {
   loadMs: number;
@@ -15,9 +15,10 @@ export interface UsbDevice {
   name: string;
 }
 
-/** One raw detector row from ClikaRT, frame pixels. */
+/** One raw detector row, frame pixels: ClikaRT gives the COCO `labelId`; Core ML gives its `model` tag and `label`. */
 export interface NativeRow {
   labelId: number;
+  model?: string;
   score: number;
   left: number;
   top: number;
@@ -32,7 +33,7 @@ export interface CameraFrameEvent {
   /** False when the detector did not run on this frame (model not open yet, no serve URL, or `none`). */
   detected: boolean;
   ms: number;
-  /** ClikaRT rows (detector `clikart`). */
+  /** ClikaRT rows (Android `clikart`) or Core ML rows (iPhone `coreml`). */
   rows: NativeRow[] | null;
   /** The raw `/v1/detections` body (detector `http`); parsed in TypeScript. */
   body: string | null;
@@ -46,7 +47,7 @@ export interface CameraErrorEvent {
 }
 
 export interface FofCameraViewProps {
-  detector: 'clikart' | 'http' | 'none';
+  detector: 'clikart' | 'http' | 'coreml' | 'none';
   serveUrl: string;
   intervalMs: number;
   /** Dashboard base URL for the preview thumbnail; empty disables it. */
@@ -80,8 +81,11 @@ declare class FofUsbModule extends NativeModule<UsbEvents> {
 export const FofRuntime = requireOptionalNativeModule<FofRuntimeModule>('FofRuntime');
 export const FofUsb = requireOptionalNativeModule<FofUsbModule>('FofUsb');
 
-/** True on an Android build that carries the camera pane. */
+/** True on a native build that carries the camera pane (Android: ClikaRT; iPhone: Core ML). */
 export const hasNativeCamera = FofRuntime !== null;
+
+/** The on-device detector this platform's native module runs. */
+export const onDeviceDetector: 'clikart' | 'coreml' = Platform.OS === 'ios' ? 'coreml' : 'clikart';
 
 const NativeCameraView: React.ComponentType<FofCameraViewProps> | null = hasNativeCamera ? requireNativeView('FofRuntime') : null;
 

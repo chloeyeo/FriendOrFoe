@@ -14,8 +14,8 @@ import {
   type KeyboardTypeOptions,
 } from 'react-native';
 
-import { hasNativeCamera } from '../../modules/fof-native';
-import { validate, type DetectorKind, type Settings, type SignalKindSetting } from '../app/settings';
+import { FofUsb } from '../../modules/fof-native';
+import { availableDetectors, validate, type DetectorKind, type Settings, type SignalKindSetting } from '../app/settings';
 import { colors, mono } from './theme';
 
 type NumKey = 'threads' | 'intervalMs' | 'challengerId' | 'personThreshold' | 'droneThreshold' | 'rttBudgetMs' | 'rssiFloorDbm';
@@ -64,13 +64,19 @@ export function SettingsScreen({ settings, modelDirHint, onSave, onCancel, compa
   const valid = Object.keys(errors).length === 0;
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setDraft((d) => ({ ...d, [key]: value }));
 
-  const detectors: { value: DetectorKind; label: string; enabled: boolean }[] = [
-    { value: 'clikart', label: 'On-device ClikaRT', enabled: hasNativeCamera },
-    { value: 'http', label: 'Laptop serve', enabled: hasNativeCamera },
-    { value: 'fake', label: 'Simulated', enabled: true },
-  ];
+  const DETECTOR_LABELS: Record<DetectorKind, string> = {
+    clikart: 'On-device ClikaRT',
+    http: 'Laptop serve',
+    coreml: 'On-device Core ML',
+    fake: 'Simulated',
+  };
+  const detectors: { value: DetectorKind; label: string; enabled: boolean }[] = availableDetectors().map((value) => ({
+    value,
+    label: DETECTOR_LABELS[value],
+    enabled: true,
+  }));
   const signals: { value: SignalKindSetting; label: string; enabled: boolean }[] = [
-    { value: 'usb', label: 'Reader gadget (USB)', enabled: hasNativeCamera },
+    { value: 'usb', label: 'Reader gadget (USB)', enabled: FofUsb !== null },
     { value: 'fake', label: 'Simulated gadget', enabled: true },
   ];
 

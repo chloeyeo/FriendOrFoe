@@ -38,6 +38,8 @@ export interface CoordinatorOptions {
   acceptedDroneIds?: string[];
   /** `fill` for the CameraX preview (FILL_CENTER), `fit` for a letterboxed view. */
   previewMode?: 'fill' | 'fit';
+  /** A drone is drawn (and challengeable) only once its track has matched this many frames; 1 shows it at once. */
+  confirmHits?: number;
   windowMs?: number;
   eventCapacity?: number;
 }
@@ -82,6 +84,8 @@ export class IffCoordinator {
   signalSource: SignalSource;
   challengerId: number;
   acceptedDroneIds: string[];
+  /** See [CoordinatorOptions.confirmHits]; 2 on the fast iPhone detector filters one-frame false drones. */
+  confirmHits: number;
 
   constructor(options: CoordinatorOptions) {
     this.signalSource = options.signalSource;
@@ -91,6 +95,7 @@ export class IffCoordinator {
     this.monotonic = options.monotonic ?? (() => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()));
     this.challengerId = options.challengerId ?? 7;
     this.acceptedDroneIds = options.acceptedDroneIds ?? [];
+    this.confirmHits = options.confirmHits ?? 1;
     this.previewMode = options.previewMode ?? 'fill';
     this.windowMs = options.windowMs ?? DEFAULT_WINDOW_MS;
     this.eventCapacity = options.eventCapacity ?? 200;
@@ -136,8 +141,9 @@ export class IffCoordinator {
     // The window's verdict comes from challenge(); here an expired lock only stops pinning the box.
     if (this._lock && now >= this._lock.until) this._lock = null;
 
-    const live = this.tracker.tracks;
-    const keep = new Set(live.map((t) => t.id));
+    // An unconfirmed drone (fewer matched frames than confirmHits) stays in the tracker but is not shown yet.
+    const live = this.tracker.tracks.filter((t) => t.cls !== 'DRONE' || t.hits >= this.confirmHits || t.id === this._lock?.boxId);
+    const keep = new Set(this.tracker.tracks.map((t) => t.id));
     if (this._lock) keep.add(this._lock.boxId);
     for (const id of [...this.iffById.keys()]) if (!keep.has(id)) this.iffById.delete(id);
     for (const id of [...this.announced]) if (!keep.has(id)) this.announced.delete(id);
@@ -145,7 +151,7 @@ export class IffCoordinator {
     for (const t of live) {
       if (t.misses !== 0 || this.announced.has(t.id)) continue;
       this.announced.add(t.id);
-      const name = t.cls === 'DRONE' ? 'drone' : 'person';
+      const name = t.cls.toLowerCase();
       this.addEvent({ t: now, text: `${name} detected · box ${t.id}`, trackId: t.id, cls: t.cls, score: t.score, box: toPreview(this.transform, t.box) });
     }
 
@@ -180,7 +186,7 @@ export class IffCoordinator {
   challenge(boxId: number): boolean {
     const now = this.clock();
     if (this._lock && now < this._lock.until) return false;
-    const track = this.tracker.tracks.find((t) => t.id === boxId && t.cls === 'DRONE');
+    const track = this.tracker.tracks.find((t) => t.id === boxId && t.cls === 'DRONE' && t.hits >= this.confirmHits);
     if (!track) return false;
 
     const until = now + this.windowMs;

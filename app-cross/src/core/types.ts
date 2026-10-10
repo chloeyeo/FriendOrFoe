@@ -12,7 +12,8 @@ export interface BoxF {
   bottom: number;
 }
 
-export type ObjClass = 'PERSON' | 'DRONE';
+/** PERSON and DRONE as in the native app; BIRD is this app's addition, so a bird is shown but never challenged. */
+export type ObjClass = 'PERSON' | 'DRONE' | 'BIRD';
 
 export type VerdictKind = 'FRIEND' | 'FOE' | 'UNKNOWN';
 

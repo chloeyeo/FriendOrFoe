@@ -8,6 +8,8 @@ export interface Track {
   score: number;
   /** 0 when seen in the latest update. */
   misses: number;
+  /** How many updates have matched this track, counting the one that created it. */
+  hits: number;
   lastSeenMillis: number;
 }
 
@@ -62,7 +64,7 @@ export class Tracker {
       trackTaken[ti] = true;
       detectionTaken[di] = true;
       const det = detections[di];
-      updated[ti] = { ...this.live[ti], box: det.box, score: det.score, misses: 0, lastSeenMillis: nowMillis };
+      updated[ti] = { ...this.live[ti], box: det.box, score: det.score, misses: 0, hits: this.live[ti].hits + 1, lastSeenMillis: nowMillis };
     }
 
     const next: Track[] = [];
@@ -73,7 +75,7 @@ export class Tracker {
     });
     detections.forEach((det, di) => {
       if (detectionTaken[di]) return;
-      next.push({ id: this.nextId++, cls: det.cls, box: det.box, score: det.score, misses: 0, lastSeenMillis: nowMillis });
+      next.push({ id: this.nextId++, cls: det.cls, box: det.box, score: det.score, misses: 0, hits: 1, lastSeenMillis: nowMillis });
     });
     this.live = next;
     return this.live.filter((t) => t.misses === 0);
@@ -85,6 +87,6 @@ export class Tracker {
   }
 
   private stickyMs(cls: ObjClass): number {
-    return cls === 'DRONE' ? this.droneStickyMs : this.personStickyMs;
+    return cls === 'DRONE' ? this.droneStickyMs : this.personStickyMs; // a bird coasts as briefly as a person
   }
 }

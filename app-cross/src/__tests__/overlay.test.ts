@@ -25,6 +25,7 @@ describe('tagFor', () => {
   it('draws every state the way the native overlay does', () => {
     expect(tagFor(track({ kind: 'UNCHALLENGED' }), 0)).toMatchObject({ text: 'drone · ?', tone: 'amber' });
     expect(tagFor(track({ kind: 'UNCHALLENGED' }, { cls: 'PERSON' }), 0)).toMatchObject({ text: 'person', tone: 'neutral' });
+    expect(tagFor(track({ kind: 'UNCHALLENGED' }, { cls: 'BIRD' }), 0)).toMatchObject({ text: 'bird', tone: 'neutral' });
     expect(tagFor(track({ kind: 'CHALLENGED', until: 7_200, windowMs: 10_000 }), 0)).toMatchObject({
       text: 'drone · challenge 8 s',
       countdown: { fraction: 0.72, seconds: 8 },
@@ -57,6 +58,8 @@ describe('droneAt', () => {
     expect(droneAt([big, small, person], 110, 110)?.id).toBe(2);
     expect(droneAt([small], 125, 110)).toBeNull();
     expect(droneAt([small], 125, 110, 8)?.id).toBe(2);
+    const bird = track({ kind: 'UNCHALLENGED' }, { id: 4, cls: 'BIRD', box: box(100, 100, 120, 120) });
+    expect(droneAt([bird], 110, 110)).toBeNull(); // a bird is never challenged
   });
 });
 
