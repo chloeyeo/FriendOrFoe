@@ -25,6 +25,18 @@ class TrackerTest {
     }
 
     @Test
+    fun `a pinned track outlives the sticky window and is re-matched by the next detection`() {
+        val tracker = Tracker(droneStickyMs = 5_000L)
+        val id = tracker.update(listOf(drone(100f, 100f, 200f, 180f), drone(400f, 100f, 500f, 180f)), 0L).first().id
+        tracker.update(emptyList(), 6_000L, pinned = setOf(id))
+        assertEquals(listOf(id), tracker.tracks.map { it.id }) // the unpinned one timed out
+        val seen = tracker.update(listOf(drone(105f, 100f, 205f, 180f)), 7_000L, pinned = setOf(id))
+        assertEquals(listOf(id), seen.map { it.id })
+        tracker.update(emptyList(), 12_001L) // unpinned again: 5 s after it was last seen
+        assertTrue(tracker.tracks.isEmpty())
+    }
+
+    @Test
     fun `a box seen again keeps its id`() {
         val tracker = Tracker()
         val first = tracker.update(listOf(drone(100f, 100f, 200f, 180f)))

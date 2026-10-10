@@ -4,10 +4,10 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Contract 2 of 3 (README section 3): stream 2 provides, the session consumes. The gadget generates the nonce,
- * runs the radio challenge-response and the crypto, and reports the verdict with signal strength and response
- * time; the phone re-checks ([ReChecks]) and draws. Implementations: [UsbGadgetSignalSource] (USB CDC serial,
- * newline-delimited JSON, see docs/GADGET_LINK.md) and [FakeSignalSource] (scripted answers for every verdict,
- * the on-stage fallback).
+ * runs the radio challenge-response and the crypto, and reports the verdict with its response time; the phone
+ * re-checks ([ReChecks]) and draws. Implementations: [UsbGadgetSignalSource] (Ihan's ESP32-C3 reader over USB
+ * serial, `QUERY <id>` in and JSON event lines out via [ReaderLink], see docs/GADGET_LINK.md) and
+ * [FakeSignalSource] (scripted answers for every verdict, the on-stage fallback).
  */
 interface SignalSource {
     /**

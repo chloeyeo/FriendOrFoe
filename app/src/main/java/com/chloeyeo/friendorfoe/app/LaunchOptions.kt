@@ -63,6 +63,7 @@ data class LaunchOptions(
             }
             applyLoadKnobs(app, intent)
             if (intent.hasExtra("demo")) app.prefs.demoMode = intent.getBooleanExtra("demo", true).also { Log.i(TAG, "launch extra demo=$it") }
+            SignalWiring.applyLaunchExtras(app.prefs, intent) // `signal`, `fake_mode`: see SignalWiring
             return LaunchOptions(
                 threads = intent.getIntExtra("clika_threads", 2).coerceIn(1, 8),
                 analysisSize = intent.getStringExtra("analysis")?.let(::parseSize),

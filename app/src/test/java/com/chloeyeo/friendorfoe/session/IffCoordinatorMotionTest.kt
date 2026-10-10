@@ -5,6 +5,7 @@ import com.chloeyeo.friendorfoe.detect.Detection
 import com.chloeyeo.friendorfoe.detect.Detector
 import com.chloeyeo.friendorfoe.detect.Frame
 import com.chloeyeo.friendorfoe.detect.ObjClass
+import com.chloeyeo.friendorfoe.signal.FakeMode
 import com.chloeyeo.friendorfoe.signal.FakeSignalSource
 import com.chloeyeo.friendorfoe.track.GrayFrame
 import org.junit.Assert.assertEquals
@@ -45,7 +46,7 @@ class IffCoordinatorMotionTest {
     fun `motionTick moves the boxes without changing ids or IFF states`() {
         var clock = 10_000L
         val det = ScriptedDetector(ArrayDeque(listOf(listOf(drone(box(10))))))
-        val c = IffCoordinator(det, FakeSignalSource(), clock = { clock })
+        val c = IffCoordinator(det, FakeSignalSource(FakeMode.SILENT), clock = { clock })
         c.motionTick(gray(ms(0), 10))
         c.tick(frame(ms(0)))
         val id = c.state.value.tracks.single().id
@@ -74,7 +75,7 @@ class IffCoordinatorMotionTest {
     fun `a late detection is fast-forwarded to where the object is now and keeps its id`() {
         var clock = 10_000L
         val det = ScriptedDetector(ArrayDeque(listOf(listOf(drone(box(10))), listOf(drone(box(22))))))
-        val c = IffCoordinator(det, FakeSignalSource(), clock = { clock })
+        val c = IffCoordinator(det, FakeSignalSource(FakeMode.SILENT), clock = { clock })
         c.motionTick(gray(ms(0), 10))
         c.tick(frame(ms(0)))
         val id = c.state.value.tracks.single().id
@@ -92,7 +93,7 @@ class IffCoordinatorMotionTest {
 
     @Test
     fun `motionTick with no tracks only buffers and publishes nothing`() {
-        val c = IffCoordinator(ScriptedDetector(ArrayDeque()), FakeSignalSource())
+        val c = IffCoordinator(ScriptedDetector(ArrayDeque()), FakeSignalSource(FakeMode.SILENT))
         val before = c.state.value
         c.motionTick(gray(ms(0), 10))
         assertEquals(before, c.state.value)

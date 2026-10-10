@@ -1,0 +1,2 @@
+# Not captured: QUERY with no key provisioned (reader.ino command()).
+{"event":"ACK","request_id":"@ID@","accepted":false,"reason":"KEY_NOT_CONFIGURED","state":"IDLE"}

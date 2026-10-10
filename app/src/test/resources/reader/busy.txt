@@ -1,0 +1,2 @@
+# Not captured: QUERY during the 3 s cooldown from the previous query's start (reader.ino command()).
+{"event":"ACK","request_id":"@ID@","accepted":false,"reason":"BUSY","state":"COOLDOWN"}

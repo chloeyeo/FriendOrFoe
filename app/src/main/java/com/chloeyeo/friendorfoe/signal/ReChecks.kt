@@ -6,7 +6,8 @@ import com.chloeyeo.friendorfoe.session.VerdictKind
  * The phone's own checks on a gadget [SignalEvent.Answer] — the three physical-layer gates the gadget cannot be
  * trusted alone with (README "Re-checks on the phone"), pure Kotlin, unit-tested:
  *
- * 1. the nonce was never seen before by this phone (`replayed nonce`),
+ * 1. the nonce was never seen before by this phone (`replayed nonce`); skipped with a note when the gadget did not
+ *    report the nonce (its log line was lost),
  * 2. the phone-measured round trip and the gadget's own `responseMs` are both within [Config.rttBudgetMs]
  *    (`late response`),
  * 3. the RSSI is at or above [Config.rssiFloorDbm] (`signal mismatch`); when the gadget reports no RSSI the check
@@ -54,8 +55,9 @@ class ReChecks(val config: Config = Config()) {
             }
         }
 
-        val nonceHex = Hex.encode(answer.nonce)
-        val fresh = seenNonces.add(nonceHex)
+        val nonce = answer.nonce
+        val fresh = nonce == null || seenNonces.add(Hex.encode(nonce))
+        if (nonce == null) notes += "nonce not reported; replay check skipped"
 
         if (answer.verdict == VerdictKind.UNKNOWN) {
             notes += "no answer to re-check"

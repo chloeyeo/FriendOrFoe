@@ -1,0 +1,7 @@
+# Reader lines of firmware/diagnostics/2026-10-10/baseline.json trial 1 (Ihan's capture),
+# GUI-added "source" and "raw" removed; @ID@ / @BOOT@ placeholders as in friend.txt.
+{"event":"ACK","request_id":"@ID@","accepted":true,"reason":"ACCEPTED","state":"QUERYING"}
+{"event":"STATE","boot_id":"@BOOT@","request_id":"@ID@","state":"QUERYING","reason":"CHANGED"}
+{"event":"TX_CHALLENGE","request_id":"@ID@","query":1,"at_ms":1112,"elapsed_ms":0,"bytes":38,"version":1,"type":1,"reader_id":1,"drone_id":1,"nonce":"c45efe0edcd984f4dd1a3f7df0ac7ef8","tag":"b2e57e1c746a0bf09a268926bd01044b","result":"BROADCAST_STARTED"}
+{"event":"RESULT","request_id":"@ID@","query":1,"response_received":false,"verdict":"UNKNOWN","reason":"NO_RESPONSE","response_ms":null,"elapsed_ms":3000,"replay":false}
+{"event":"STATE","boot_id":"@BOOT@","request_id":"@ID@","state":"IDLE","reason":"CHANGED"}

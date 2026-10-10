@@ -3,6 +3,8 @@ package com.chloeyeo.friendorfoe.ui.settings
 import com.chloeyeo.friendorfoe.app.Prefs
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
 import com.chloeyeo.friendorfoe.session.IffState
+import com.chloeyeo.friendorfoe.signal.FakeMode
+import com.chloeyeo.friendorfoe.signal.SignalChoice
 
 /** Everything the settings screen edits, as plain values (read from and written to [Prefs]). */
 data class SettingsValues(
@@ -20,6 +22,8 @@ data class SettingsValues(
     val strictPhysical: Boolean,
     val demoMode: Boolean,
     val dashboardBaseUrl: String,
+    val signalChoice: SignalChoice = SignalChoice.DEFAULT,
+    val fakeMode: FakeMode = FakeMode.HONEST,
 ) {
     fun writeTo(p: Prefs) {
         p.detectorConfig = detector
@@ -36,6 +40,8 @@ data class SettingsValues(
         p.strictPhysical = strictPhysical
         p.demoMode = demoMode
         p.dashboardBaseUrl = dashboardBaseUrl
+        p.signalChoice = signalChoice
+        p.fakeMode = fakeMode
     }
 
     companion object {
@@ -54,6 +60,8 @@ data class SettingsValues(
             strictPhysical = p.strictPhysical,
             demoMode = p.demoMode,
             dashboardBaseUrl = p.dashboardBaseUrl,
+            signalChoice = p.signalChoice,
+            fakeMode = p.fakeMode,
         )
     }
 }
@@ -89,6 +97,8 @@ data class SettingsForm(
     val dashboardBaseUrl: String,
     val droneModelDir: String = DEFAULT_DUAL_DRONE_DIR,
     val personModelDir: String = DEFAULT_DUAL_PERSON_DIR,
+    val signalChoice: SignalChoice = SignalChoice.DEFAULT,
+    val fakeMode: FakeMode = FakeMode.HONEST,
 ) {
     sealed interface Result {
         data class Valid(val values: SettingsValues) : Result
@@ -159,6 +169,8 @@ data class SettingsForm(
                 strictPhysical = strictPhysical,
                 demoMode = demoMode,
                 dashboardBaseUrl = dashboard,
+                signalChoice = signalChoice,
+                fakeMode = fakeMode,
             ),
         )
     }
@@ -196,6 +208,8 @@ data class SettingsForm(
             dashboardBaseUrl = v.dashboardBaseUrl,
             droneModelDir = (v.detector as? DetectorConfig.Dual)?.droneDir ?: DEFAULT_DUAL_DRONE_DIR,
             personModelDir = (v.detector as? DetectorConfig.Dual)?.let { it.personDir.orEmpty() } ?: DEFAULT_DUAL_PERSON_DIR,
+            signalChoice = v.signalChoice,
+            fakeMode = v.fakeMode,
         )
     }
 }

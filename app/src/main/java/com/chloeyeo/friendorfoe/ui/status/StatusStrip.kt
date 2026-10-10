@@ -26,6 +26,7 @@ import com.chloeyeo.friendorfoe.ui.overlay.dbm
 import com.chloeyeo.friendorfoe.ui.theme.FriendOrFoeTheme
 import com.chloeyeo.friendorfoe.ui.theme.IffAmber
 import com.chloeyeo.friendorfoe.ui.theme.IffGreen
+import com.chloeyeo.friendorfoe.ui.theme.IffRed
 import com.chloeyeo.friendorfoe.ui.theme.Ink
 import com.chloeyeo.friendorfoe.ui.theme.MonoStyle
 import com.chloeyeo.friendorfoe.ui.theme.OnSurface
@@ -49,6 +50,7 @@ fun StatusStrip(status: StatusUi, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         NetworkBadge(status.offline)
+        if (status.fakeSignal) FakeBadge()
         Text(
             status.detectorName,
             color = OnSurface,
@@ -84,6 +86,17 @@ private fun NetworkBadge(offline: Boolean) {
             modifier = Modifier.border(2.dp, IffAmber, shape).padding(horizontal = 10.dp, vertical = 2.dp),
         )
     }
+}
+
+/** Red outline `FAKE SIGNAL`: taps go to the scripted source, not the gadget (Settings → Gadget). */
+@Composable
+private fun FakeBadge() {
+    Text(
+        "FAKE SIGNAL",
+        color = IffRed,
+        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
+        modifier = Modifier.border(2.dp, IffRed, RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 2.dp),
+    )
 }
 
 @Composable

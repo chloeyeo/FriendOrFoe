@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- USB devices FriendOrFoe offers to open when they are plugged in (UsbAttachActivity). Choosing the app with
+     "always open" makes Android remember the USB permission, so the dialog is not raised at every plug-in.
+     Decimal ids, as Android requires. -->
+<resources>
+    <!-- Ihan's reader: ESP32-C3 built-in USB-Serial/JTAG, 303a:1001 (firmware/README.md, serial_connection.py). -->
+    <usb-device vendor-id="12346" product-id="4097" />
+    <!-- The NU40DK (nRF52840) drone board, TinyUSB CDC. 239a:80ac is the example id in Ihan's
+         tests/test_reader_gui.py, not confirmed on the board. The phone never queries it: its STATUS says role
+         "drone", and the handshake refuses it. -->
+    <usb-device vendor-id="9114" product-id="32940" />
+</resources>

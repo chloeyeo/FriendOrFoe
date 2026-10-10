@@ -5,6 +5,7 @@ import com.chloeyeo.friendorfoe.detect.ObjClass
 import com.chloeyeo.friendorfoe.session.IffState
 import com.chloeyeo.friendorfoe.session.TrackUi
 import com.chloeyeo.friendorfoe.session.VerdictKind
+import com.chloeyeo.friendorfoe.signal.SignalKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -52,6 +53,18 @@ class OverlayStyleTest {
         assertEquals("FOE · late response", tag.text)
         assertEquals(Tone.RED, tag.tone)
         assertEquals("RQ-07 · −60 dBm · 3450 ms", tag.detail)
+    }
+
+    @Test
+    fun fakeVerdictsEndWithFake() {
+        val friend = tagFor(drone(IffState.Verdict(VerdictKind.FRIEND, null, "RQ-07", -58, 42, SignalKind.FAKE)), now)
+        assertEquals(TrackTag("FRIEND · RQ-07 · −58 dBm · 42 ms · FAKE", Tone.GREEN), friend)
+        val foe = tagFor(drone(IffState.Verdict(VerdictKind.FOE, "bad tag", "RQ-07", -59, 45, SignalKind.FAKE)), now)
+        assertEquals("FOE · bad tag · FAKE", foe.text)
+        val unknown = tagFor(drone(IffState.Verdict(VerdictKind.UNKNOWN, null, null, null, null, SignalKind.FAKE)), now)
+        assertEquals("UNKNOWN · no response · FAKE", unknown.text)
+        val gadget = tagFor(drone(IffState.Verdict(VerdictKind.FRIEND, null, "RQ-07", -58, 42, SignalKind.USB_GADGET)), now)
+        assertEquals("FRIEND · RQ-07 · −58 dBm · 42 ms", gadget.text)
     }
 
     @Test

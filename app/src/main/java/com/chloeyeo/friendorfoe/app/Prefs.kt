@@ -5,7 +5,9 @@ import android.content.SharedPreferences
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
 import com.chloeyeo.friendorfoe.detect.LabelMap
 import com.chloeyeo.friendorfoe.detect.ModelDirs
+import com.chloeyeo.friendorfoe.signal.FakeMode
 import com.chloeyeo.friendorfoe.signal.ReChecks
+import com.chloeyeo.friendorfoe.signal.SignalChoice
 import java.io.File
 
 /**
@@ -59,10 +61,23 @@ class Prefs(context: Context) {
         get() = sp.getFloat(KEY_DRONE_THRESHOLD, LabelMap.DEFAULT_DRONE_THRESHOLD)
         set(value) = sp.edit().putFloat(KEY_DRONE_THRESHOLD, value).apply()
 
-    /** Demo mode: FakeSignalSource instead of the USB gadget, DemoScenario available on screen. */
+    /** Demo mode: the scripted DemoScenario on screen instead of the live camera (the live signal path is [signalChoice]). */
     var demoMode: Boolean
         get() = sp.getBoolean(KEY_DEMO_MODE, true)
         set(value) = sp.edit().putBoolean(KEY_DEMO_MODE, value).apply()
+
+    /**
+     * Where a tap goes on the live camera: USB (the default, gadget only; none attached -> `UNKNOWN · no gadget`),
+     * AUTO (opt-in: the USB gadget when one is connected, else the fake), FAKE. Read on every tap.
+     */
+    var signalChoice: SignalChoice
+        get() = SignalChoice.parse(sp.getString(KEY_SIGNAL_CHOICE, null)) ?: SignalChoice.DEFAULT
+        set(value) = sp.edit().putString(KEY_SIGNAL_CHOICE, value.name).apply()
+
+    /** The scripted answer the fake signal source gives (HONEST -> FRIEND, REPLAY -> FOE replayed nonce, ...). */
+    var fakeMode: FakeMode
+        get() = FakeMode.parse(sp.getString(KEY_FAKE_MODE, null)) ?: FakeMode.HONEST
+        set(value) = sp.edit().putString(KEY_FAKE_MODE, value.name).apply()
 
     /** Round-trip budget for the `late response` re-check. */
     var rttBudgetMs: Long
@@ -127,6 +142,8 @@ class Prefs(context: Context) {
         const val KEY_PERSON_THRESHOLD = "personThreshold"
         const val KEY_DRONE_THRESHOLD = "droneThreshold"
         const val KEY_DEMO_MODE = "demoMode"
+        const val KEY_SIGNAL_CHOICE = "signalChoice"
+        const val KEY_FAKE_MODE = "fakeMode"
         const val KEY_RTT_BUDGET_MS = "rttBudgetMs"
         const val KEY_RSSI_FLOOR_DBM = "rssiFloorDbm"
         const val KEY_STRICT_PHYSICAL = "strictPhysical"

@@ -25,6 +25,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.chloeyeo.friendorfoe.session.DemoScenario
 import com.chloeyeo.friendorfoe.session.SignalUi
+import com.chloeyeo.friendorfoe.signal.SignalKind
+import com.chloeyeo.friendorfoe.ui.overlay.FAKE_MARK
 import com.chloeyeo.friendorfoe.session.StatusUi
 import com.chloeyeo.friendorfoe.ui.StatusDot
 import com.chloeyeo.friendorfoe.ui.VerdictChip
@@ -87,7 +89,7 @@ private fun AnswerRow(a: SignalUi) {
             }
             Spacer(Modifier.width(8.dp))
             Text(
-                listOfNotNull(a.droneId, a.reason).joinToString(TAG_SEP).ifEmpty { "—" },
+                listOfNotNull(a.droneId, a.reason, if (a.source == SignalKind.FAKE) FAKE_MARK else null).joinToString(TAG_SEP).ifEmpty { "—" },
                 color = OnSurface,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,

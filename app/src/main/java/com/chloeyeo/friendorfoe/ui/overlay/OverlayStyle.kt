@@ -4,6 +4,7 @@ import com.chloeyeo.friendorfoe.detect.ObjClass
 import com.chloeyeo.friendorfoe.session.IffState
 import com.chloeyeo.friendorfoe.session.TrackUi
 import com.chloeyeo.friendorfoe.session.VerdictKind
+import com.chloeyeo.friendorfoe.signal.SignalKind
 import kotlin.math.ceil
 
 /** Ring and tag colour family; the painter maps it to a theme colour. */
@@ -37,21 +38,27 @@ fun tagFor(track: TrackUi, nowMs: Long): TrackTag {
     }
 }
 
-private fun verdictTag(v: IffState.Verdict): TrackTag = when (v.kind) {
-    VerdictKind.FRIEND -> TrackTag(
-        text = listOfNotNull("FRIEND", v.droneId, v.rssiDbm?.let(::dbm), v.roundTripMs?.let(::millis)).joinToString(TAG_SEP),
-        tone = Tone.GREEN,
-    )
-    VerdictKind.FOE -> TrackTag(
-        text = listOfNotNull("FOE", v.reason).joinToString(TAG_SEP),
-        tone = Tone.RED,
-        detail = evidence(v),
-    )
-    VerdictKind.UNKNOWN -> TrackTag(
-        text = "UNKNOWN$TAG_SEP${v.reason ?: "no response"}",
-        tone = Tone.RED,
-        detail = evidence(v),
-    )
+/** A verdict from the scripted FakeSignalSource ends its tag with ` · FAKE`, so it is never mistaken for the gadget's. */
+const val FAKE_MARK = "FAKE"
+
+private fun verdictTag(v: IffState.Verdict): TrackTag {
+    val fake = if (v.source == SignalKind.FAKE) FAKE_MARK else null
+    return when (v.kind) {
+        VerdictKind.FRIEND -> TrackTag(
+            text = listOfNotNull("FRIEND", v.droneId, v.rssiDbm?.let(::dbm), v.roundTripMs?.let(::millis), fake).joinToString(TAG_SEP),
+            tone = Tone.GREEN,
+        )
+        VerdictKind.FOE -> TrackTag(
+            text = listOfNotNull("FOE", v.reason, fake).joinToString(TAG_SEP),
+            tone = Tone.RED,
+            detail = evidence(v),
+        )
+        VerdictKind.UNKNOWN -> TrackTag(
+            text = listOfNotNull("UNKNOWN", v.reason ?: "no response", fake).joinToString(TAG_SEP),
+            tone = Tone.RED,
+            detail = evidence(v),
+        )
+    }
 }
 
 /** droneId, RSSI and round trip under a red tag, so a late or relayed answer shows its numbers. */

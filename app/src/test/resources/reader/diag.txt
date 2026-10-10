@@ -1,0 +1,4 @@
+# Not captured: DIAG lines (reader.ino flushLogs and loop) and HELP.
+{"event":"DIAG","dropped_packet_logs":3}
+{"event":"DIAG","role":"reader","radio_error":true,"receive_queue_overflow":false}
+{"event":"HELP","commands":["QUERY <request_id>","STATUS [request_id]","HELP","KEY <64 hex digits>"]}

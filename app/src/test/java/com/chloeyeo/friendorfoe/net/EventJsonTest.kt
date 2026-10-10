@@ -6,6 +6,7 @@ import com.chloeyeo.friendorfoe.session.EventUi
 import com.chloeyeo.friendorfoe.session.IffState
 import com.chloeyeo.friendorfoe.session.TrackUi
 import com.chloeyeo.friendorfoe.session.VerdictKind
+import com.chloeyeo.friendorfoe.signal.SignalKind
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -24,9 +25,15 @@ class EventJsonTest {
         assertEquals(
             """{"t":1760000000000,"class":"drone","box":[576.0,238.0,806.3,432.0],"iffStatus":"FOE",""" +
                 """"droneId":"RQ-07","reason":"replayed nonce","text":"FOE · replayed nonce · RQ-07","trackId":2,""" +
-                """"score":0.42,"rssiDbm":-61,"roundTripMs":40}""",
+                """"score":0.42,"rssiDbm":-61,"roundTripMs":40,"source":null}""",
             EventJson.event(e),
         )
+    }
+
+    @Test
+    fun fakeVerdictEventCarriesItsSource() {
+        val e = EventUi(t = 1, text = "FRIEND · RQ-07 (fake)", verdict = VerdictKind.FRIEND, source = SignalKind.FAKE)
+        assertEquals("FAKE", JSONObject(EventJson.event(e)).getString("source"))
     }
 
     @Test
