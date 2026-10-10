@@ -20,7 +20,7 @@ Requirements for the hackathon submission. Each maps to one roadmap phase.
 - [x] **DET-03**: Detections are mapped by `labelId` to `person` (0) and `drone` (aeroplane 4, bird 14, kite 33) with per-class score thresholds (drone proxies ≈ 0.25–0.3, person 0.5); every other class is ignored and `cell phone` is never mapped to drone.
 - [ ] **DET-04**: Boxes are drawn on the preview in correct preview coordinates (analysis-frame → PreviewView mapping including rotation and FILL_CENTER crop) with a class colour, label and score, and visibly sit on the object they belong to.
 - [ ] **DET-05**: The detector sits behind a `Detector` interface; `HttpDetector` against `clikart-cli serve` (`POST /v1/detections`) is selectable with one config change as the H4 contingency and dev loop, and nothing above the interface changes.
-- [ ] **DET-06**: When a drone box is tapped it is locked (id + rect) for the 10 s challenge window, so the gadget's answer — which can arrive up to 10 s later — is attributed to that box even if the detector loses the object in between.
+- [x] **DET-06**: When a drone box is tapped it is locked (id + rect) for the 10 s challenge window, so the gadget's answer — which can arrive up to 10 s later — is attributed to that box even if the detector loses the object in between.
 - [ ] **DET-08**: Observer hears a chime (bundled sound, not TTS) and sees a banner "DRONE · bearing 045 · high" on the first drone detection of a run. *(stretch; cut order 1)*
 - [ ] **DET-09**: Observer can select the OWLv2 zero-shot detector in settings (labels "drone", "quadcopter", "uav") as the accuracy option; promoted to table stakes if PIT-04 shows COCO cannot see the demo target. *(cut order 2)*
 
@@ -148,7 +148,7 @@ Which phases cover which requirements. Populated during roadmap creation (2026-1
 | DET-03 | Phase 2 | Complete |
 | DET-04 | Phase 2 | Pending |
 | DET-05 | Phase 1 | Pending |
-| DET-06 | Phase 2 | Pending |
+| DET-06 | Phase 2 | Complete |
 | DET-08 | Phase 5 | Pending |
 | DET-09 | Phase 6 | Pending |
 | IFF-01 | Phase 3 | Pending |
