@@ -25,7 +25,7 @@ import java.security.SecureRandom
  * - **One challenge** ([challenge]): waits (up to 3.2 s) for the reader to be IDLE (it refuses a QUERY for 3 s from
  *   the previous query's start, even after FRIEND), writes `QUERY <request_id>`, and ends with exactly one
  *   [SignalEvent.Answer] mapped by [ReaderVerdicts], or a [GadgetUnavailableException]: ACK refused -> its reason;
- *   no ACK in 2 s -> `gadget no ack`; no RESULT 5 s after the ACK -> `no response` (one `STATUS` at 3.5 s first,
+ *   no ACK in 2 s -> `gadget no ack`; no RESULT 5 s after the ACK -> `gadget no result` (one `STATUS` at 3.5 s first,
  *   whose `last_result` recovers a lost RESULT; its round trip is then the reader's `response_ms` / `elapsed_ms`,
  *   not the STATUS arrival time).
  * - **Attribution**: the request id is `<launch prefix>-<seq>-<boxId>` (at most 32 of `[A-Za-z0-9_-]`), unique
@@ -238,7 +238,7 @@ class ReaderLink(
                     continue
                 }
                 if (ackedAt < 0 && now >= q.writtenAt + timing.ackMs) throw GadgetUnavailableException(NO_ACK)
-                if (ackedAt >= 0 && now >= ackedAt + timing.resultAfterAckMs) throw GadgetUnavailableException(ReaderVerdicts.NO_RESPONSE)
+                if (ackedAt >= 0 && now >= ackedAt + timing.resultAfterAckMs) throw GadgetUnavailableException(NO_RESULT)
             }
             val wakeAt = if (r != null) {
                 resultAt + timing.nonceGraceMs
@@ -439,6 +439,9 @@ class ReaderLink(
         const val NO_GADGET = "no gadget"
         const val BUSY = "gadget busy"
         const val NO_ACK = "gadget no ack"
+
+        /** The phone heard the ACK but never a RESULT (lost on the link); not the reader's radio NO_RESPONSE. */
+        const val NO_RESULT = "gadget no result"
         const val NOT_READY = "gadget not ready"
         const val REBOOTED = "gadget rebooted"
         const val WRITE_FAILED = "gadget write failed"

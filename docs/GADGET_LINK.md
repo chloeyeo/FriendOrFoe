@@ -99,7 +99,8 @@ The handshake reply (from the firmware's format string; no reader STATUS was cap
 4. **`QUERY <id>`** written; the phone's clock starts here for the round trip.
 5. **ACK** expected within 2 s, else `UNKNOWN · gadget no ack`.
 6. **RESULT** expected within ~3 s (the reader's deadline); at 3.5 s without one the phone asks `STATUS` once and
-   takes `last_result` if it carries this id; 5 s after the ACK without a RESULT → `UNKNOWN · no response`.
+   takes `last_result` if it carries this id; 5 s after the ACK without a RESULT → `UNKNOWN · gadget no result`
+   (the link lost it; distinct from the reader's radio `NO_RESPONSE`, which is `UNKNOWN · no response`).
 7. If the RESULT came before its TX_CHALLENGE, the phone waits up to 300 ms for the nonce, then goes on without it.
 
 The phone's own 10 s challenge window still bounds all of this.
@@ -120,7 +121,7 @@ RADIO_ERROR` (`FofProtocol.h`). The phone (`signal/ReaderVerdicts.kt`) fails clo
 | any RESULT with `replay:true` (the reader re-sending a stored verdict: `ACK DUPLICATE` + the old RESULT, or `STATUS last_result`; never an answer to this nonce) | **UNKNOWN** · stale result |
 | FRIEND with another reason, UNKNOWN with `NONE`, an unknown reason | **UNKNOWN** · invalid result / the reason in words |
 | `ACK` BUSY / KEY_NOT_CONFIGURED / RADIO_ERROR / INVALID_* / COMMAND_TOO_LONG | **UNKNOWN** · gadget busy / gadget key not set / gadget radio error / gadget refused ... |
-| phone-side: no port, not handshaken, no ACK, no RESULT, reboot, unplug, download mode | **UNKNOWN** · no gadget / gadget not ready / gadget no ack / no response / gadget rebooted / gadget unplugged / gadget in download mode |
+| phone-side: no port, not handshaken, no ACK, no RESULT, reboot, unplug, download mode | **UNKNOWN** · no gadget / gadget not ready / gadget no ack / gadget no result / gadget rebooted / gadget unplugged / gadget in download mode |
 
 A RESULT for one of this phone's earlier request ids (its challenge already ended) is logged as `late result for
 box N ignored` and never drawn.

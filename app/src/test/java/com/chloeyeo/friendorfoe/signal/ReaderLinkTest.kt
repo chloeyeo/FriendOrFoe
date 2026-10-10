@@ -218,10 +218,10 @@ class ReaderLinkTest {
     }
 
     @Test
-    fun `an ACK but no RESULT asks STATUS once, then ends no response`() {
+    fun `an ACK but no RESULT asks STATUS once, then ends gadget no result, not the radio's no response`() {
         val (link, port) = attached()
         port.queries += listOf(lines("friend.txt")[0])
-        assertEquals("no response", link.run().error)
+        assertEquals("gadget no result", link.run().error)
         assertEquals(listOf("STATUS t3st0001-s1", "QUERY t3st0001-1-3", "STATUS t3st0001-s2"), port.written)
     }
 
