@@ -50,7 +50,12 @@ const config: ExpoConfig = {
     permissions: ['android.permission.CAMERA', 'android.permission.ACCESS_NETWORK_STATE'],
     predictiveBackGestureEnabled: false,
   },
-  ios: { supportsTablet: true, bundleIdentifier: 'com.chloeyeo.friendorfoe.cross' },
+  ios: {
+    supportsTablet: true,
+    bundleIdentifier: 'com.chloeyeo.friendorfoe.cross',
+    // Signing team for `expo run:ios --device` (the developer's own, so it comes from the environment, never the repo).
+    appleTeamId: process.env.APPLE_TEAM_ID || undefined,
+  },
   web: { favicon: './assets/favicon.png' },
   plugins: [
     [
