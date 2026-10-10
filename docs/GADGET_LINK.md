@@ -84,7 +84,7 @@ The handshake reply (from the firmware's format string; no reader STATUS was cap
 | `STATUS` | handshake (compatible = `role:"reader"`, `interface_version:2`, `manual_query:true`, a `boot_id`), key and radio state, and `last_result` to recover a lost RESULT. |
 | `DIAG` | `dropped_packet_logs` or `radio_error`/`receive_queue_overflow`: logged. |
 | `HELP`, other events | logged. |
-| text lines | `KEY: stored`, `KEY: missing; ...`, `RADIO: BLE5 extended broadcast; ...`, `CONFIG: ...`, ESP ROM text: logged with hex runs cut. A line containing `waiting for download` means the C3 is in download mode: taps say `UNKNOWN · gadget in download mode` until it is reset (release BOOT, press RESET or re-plug). |
+| text lines | `KEY: stored`, `KEY: missing; ...`, `RADIO: BLE5 extended broadcast; ...`, `CONFIG: ...`, ESP ROM text: logged with hex runs cut. A line containing `waiting for download` means the C3 is in download mode: taps say `UNKNOWN · gadget in download mode` until it is reset (release BOOT, press RESET or re-plug); the reader's `STATE BOOT` or its next compatible `STATUS` clears it. |
 
 ## One challenge, on the phone
 

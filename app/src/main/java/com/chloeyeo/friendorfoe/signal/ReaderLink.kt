@@ -361,6 +361,8 @@ class ReaderLink(
                 is ReaderEvent.State -> {
                     val prev = _reader.value
                     if (ev.reason == "BOOT" || (prev != null && prev.bootId != ev.bootId)) {
+                        // A boot is the way out of download mode (RESET with BOOT released).
+                        if (ev.reason == "BOOT") downloadMode = false
                         _reader.value = null
                         if (prev != null) {
                             failOpenLocked(REBOOTED)
@@ -422,6 +424,8 @@ class ReaderLink(
             after += { it.onReader(false, "USB device is not a FoF reader v2 (role ${ev.role ?: "?"}, interface ${ev.interfaceVersion ?: "?"})") }
             return
         }
+        // A compatible STATUS means the reader firmware is running again: the download-mode latch is stale.
+        downloadMode = false
         val prev = _reader.value
         val info = ReaderInfo(ev.bootId!!, ev.state ?: IDLE, ev.keyConfigured, ev.radioReady)
         if (prev != null && prev.bootId != info.bootId) failOpenLocked(REBOOTED)

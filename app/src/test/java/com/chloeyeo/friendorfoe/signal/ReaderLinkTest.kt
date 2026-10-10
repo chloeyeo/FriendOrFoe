@@ -313,6 +313,26 @@ class ReaderLinkTest {
     }
 
     @Test
+    fun `download mode is cleared by the reader's boot STATUS after RESET`() {
+        val (link, port) = attached()
+        port.feed(listOf("ESP-ROM:esp32c3-api1-20210207", "waiting for download"))
+        assertEquals("gadget in download mode", link.run().error)
+        port.feed(lines("status.txt"))
+        port.queries += lines("friend.txt")
+        assertEquals(VerdictKind.FRIEND, link.run().answer!!.verdict)
+    }
+
+    @Test
+    fun `download mode is cleared by STATE BOOT even before a STATUS arrives`() {
+        val (link, port) = attached()
+        port.feed(listOf("waiting for download"))
+        port.statusScript = null
+        port.feed(listOf("""{"event":"STATE","boot_id":"@BOOT@","request_id":"","state":"IDLE","reason":"BOOT"}"""))
+        assertEquals("gadget not ready", link.run().error)
+        assertEquals("STATUS t3st0001-s2", port.written[1]) // the boot restarted the handshake
+    }
+
+    @Test
     fun `a board that is not a reader v2 is never queried`() {
         val (link, port) = attached()
         port.feed(listOf(Fixtures.lines("status.txt").single().replace("\"role\":\"reader\"", "\"role\":\"drone\"")))
