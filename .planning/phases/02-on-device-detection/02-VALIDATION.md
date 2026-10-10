@@ -61,18 +61,20 @@ A Kotlin test file that references a class which does not exist yet fails compil
 | 02-04-01 | 04 | 3 | DET-04 | — | N/A | unit | `./gradlew :app:testDebugUnitTest --tests "*FrameTransformTest" --offline` (adds the 1280×720 → 1600×720 case with an edge box) | ✅ | ⬜ pending |
 | 02-04-02 | 04 | 3 | DET-01 | T-02-06 | KEEP_ONLY_LATEST + busy gate; proxy closed in `finally` | compile | `./gradlew :app:compileDebugKotlin --offline -q` | n/a | ⬜ pending |
 | 02-04-03 | 04 | 3 | DET-02, DET-04, OBS-04 | T-02-04, T-02-01 | extras inert outside debug; `clikart:` dir inside app storage; activity never reads the credential | full suite | `./gradlew :app:testDebugUnitTest :app:assembleDebug --offline -q` | n/a | ⬜ pending |
-| 02-05-01 | 05 | 4 | DET-01 | — | N/A | manual (phone, executor-run adb) | — (logcat `FoF` first-frame line: delivered size, `rotationDegrees`, `cropRect`, strides) | n/a | ⬜ pending |
-| 02-05-01 | 05 | 4 | DET-02 | T-02-01 | credential never logged or shown; only the code name on screen | manual (phone) | — (status strip + `adb logcat -s ClikaRT FoF`; capture grepped for `CLIKA1`) | n/a | ⬜ pending |
-| 02-05-01 | 05 | 4 | DET-02 | — | N/A | manual (phone + laptop) | parity: live-frame dump `files/dumps/frame.png` vs `clikart-cli … detect` on the same PNG; `am start --es parity parity/scene.png` vs the CLI on the asset | ✅ asset (02-02-03) | ⬜ pending |
-| 02-05-02 | 05 | 4 | DET-04 | — | N/A | manual (phone) | — (rings sit on an object at the left/right/top frame edge) | n/a | ⬜ pending |
-| 02-05-02 | 05 | 4 | OBS-04 | T-02-10 | airplane state asserted via `settings get global airplane_mode_on` | manual (phone) | — (OFFLINE badge toggles with `cmd connectivity airplane-mode enable/disable`) | n/a | ⬜ pending |
-| 02-05-02 | 05 | 4 | DET-06 | — | N/A | manual (phone) | — (tap → Challenged ring survives a 3 s occlusion, expires at 10 s) | n/a | ⬜ pending |
-| 02-05-03 | 05 | 4 | DET-02 (H4 rule) | T-02-02 | HTTP branch recorded in README with reason and the Phase 6 re-run rule | docs + unit | `grep -q "Criterion 1 (in-process boxes in airplane mode): " README.md && ./gradlew :app:testDebugUnitTest --offline -q` | n/a | ⬜ pending |
+| 02-05-01 | 05 | 4 | DET-01 | — | N/A | manual (phone, executor-run adb) | — (logcat `FoF` first-frame line: delivered size, `rotationDegrees`, `cropRect`, strides) | n/a | ✅ green |
+| 02-05-01 | 05 | 4 | DET-02 | T-02-01 | credential never logged or shown; only the code name on screen | manual (phone) | — (status strip + `adb logcat -s ClikaRT FoF`; capture grepped for `CLIKA1`) | n/a | ✅ green (offline; online = `LICENSE_STATE_BLOCKED`, seats full) |
+| 02-05-01 | 05 | 4 | DET-02 | — | N/A | manual (phone + laptop) | parity: live-frame dump `files/dumps/frame.png` vs `clikart-cli … detect` on the same PNG; `am start --es parity parity/scene.png` vs the CLI on the asset | ✅ asset (02-02-03) | ✅ green (asset); live frame open → 02-06 |
+| 02-05-02 | 05 | 4 | DET-04 | — | N/A | manual (phone) | — (rings sit on an object at the left/right/top frame edge) | n/a | ✅ green (person boxes, left/right edge; top not checked) |
+| 02-05-02 | 05 | 4 | OBS-04 | T-02-10 | airplane state asserted via `settings get global airplane_mode_on` | manual (phone) | — (OFFLINE badge toggles with `cmd connectivity airplane-mode enable/disable`) | n/a | ✅ green |
+| 02-05-02 | 05 | 4 | DET-06 | — | N/A | manual (phone) | — (tap → Challenged ring survives a 3 s occlusion, expires at 10 s) | n/a | ⬜ deferred (no drone box on device yet; unit-covered) |
+| 02-05-03 | 05 | 4 | DET-02 (H4 rule) | T-02-02 | HTTP branch recorded in README with reason and the Phase 6 re-run rule | docs + unit | `grep -q "Criterion 1 (in-process boxes in airplane mode): " README.md && ./gradlew :app:testDebugUnitTest --offline -q` | n/a | ✅ green (met; no H4 flip) |
 | 02-06-01 | 06 | 5 | DET-02 (D-06/D-14) | T-02-12 | thread runs restart the process; ties go to fewer threads | manual (phone, executor-run adb) | — (`tick … ms` medians at 2/4/8 threads; 960×540 run if > 1.5 s) | n/a | ⬜ pending |
 | 02-06-02 | 06 | 5 | PIT-04 | — | N/A | manual (phone) | — (three props at 0.5–0.7 m with `--ez log_raw true`; raw scores per label id; occlusion) | n/a | ⬜ pending |
 | 02-06-03 | 06 | 5 | PIT-04, DET-03 | T-02-11 | drone threshold changed only within 0.25–0.30 on a measured median | docs + unit | `grep -q "### PIT-04 — demo target decision (H3)" README.md && ./gradlew :app:testDebugUnitTest --offline -q` | n/a | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+
+Checkpoint 1 observed (phone A, 2026-10-10): median 4489 ms/frame, 0.22 fps at the desk (0-1 tracks), 7096 ms / 0.14 fps on a crowded view (8-13 tracks); bring-up capture 3497 ms / 0.28 fps. No drone box on the DJI quadcopter or the laptop-screen photo (PIT-04 → 02-06). Online, the license is `LICENSE_STATE_BLOCKED` (all hardware seats held by other units).
 
 Sampling continuity: the only non-automated tasks are the two `checkpoint:human-verify` tasks (02-05-02, 02-06-02); each is preceded and followed by a task with an automated command, so no three consecutive tasks lack one.
 

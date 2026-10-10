@@ -428,6 +428,33 @@ Captured with `adb logcat -s ClikaRT FoF` (75 s).
 | Dump colour check | no shearing, no green lines, no stride artefacts; scene is neutral grey, so the channel-order check is inconclusive on this frame |
 | In-process rows on a live scene | yes: tick 3 of the capture logged 20 raw rows (person 0.913 / 0.909 / 0.871, bottle, chair, laptop, cell phone, …) |
 
+Visual checks, 17:37-17:52 phone time. Chloe's report: "so it catches people alright but not the drone". The
+executor ran the rest over adb, using four screenshots Chloe took on phone A (17:41:49, 17:43:07, 17:46:21-37) and
+`screencap` captures. The phone locked at about 17:52 and no further captures were possible.
+
+| Check | Observed |
+|-------|----------|
+| Boxes on objects: person | ok. `person` boxes sit on the seated and standing people in the hall, with ✈ OFFLINE on the strip (17:41:49 screenshot) and later online too |
+| Boxes on objects: drone | **no box.** 17:43:07 screenshot: a real DJI-style folding quadcopter, arms out, held in hand at about 0.3-0.5 m in front of the laptop, airplane mode on: no box of any class (ticks report `tracks=0`/`1`). Chloe's report also covers a full-screen quadcopter photo on the laptop screen at about 0.5-0.7 m: no aeroplane (4) / bird (14) / kite (33) box. Raw rows for ids 4/14/33/67 were not captured: that session ran without `log_raw`, and the phone was locked before a re-run. Open for checkpoint 2 (PIT-04 / DET-09, plan 02-06) |
+| Edge mapping | there was no drone box, so this was checked with person boxes. In the 17:46:37 screenshot the static seated people at the far left (x ≈ 0-65 px) and the far right (x ≈ 1535-1600 px) have their head and body boxes on them; no shift in one direction across the frame. People who are moving trail by one tick (4-7 s at 0.14-0.22 fps), as expected. Top edge: nothing near the top of the frame, so it was not checked. No `FrameTransform` fix applied |
+| OFFLINE badge | airplane on + Wi-Fi off: `✈ OFFLINE` (17:41, 17:43). Airplane off with Wi-Fi + LTE validated: `ONLINE` (17:46, 17:48). Airplane on **with Wi-Fi left on**: `ONLINE` (17:49). Samsung keeps Wi-Fi on in airplane mode once you have turned it on there, so this is correct under D-12 (validated network) and a trap in the runbook |
+| Tap lock | deferred: no drone box on device yet; the logic is covered by the `IffCoordinatorTest` lock cases |
+| Preview over rings | ok: in every screenshot the rings and tags are drawn on top of the camera image (no `COMPATIBLE` mode fix needed). The tag shows the label only, with no score |
+| Strip ms/frame · fps (observed) | at the desk, airplane on, 0-1 tracks: 4007-4984 ms, median 4489 ms, 0.22 fps (12 ticks; the strip read 4190 / 4433 ms, 0.2 fps). Crowded hall view, 8-13 tracks (online): 5309-8038 ms, median 7096 ms, 0.14 fps. Slower than the 3497 ms median of the bring-up capture; tuning is in plan 02-06 |
+| License while online | **blocked.** At 17:47:33, about 3 min after the network came back, ClikaRT logged `clikart license invalid — LICENSE_STATE_BLOCKED: this credential's hardware seats are all held by other units; release a seat or raise its max_hardware to admit this one`. Every tick after that failed with `unknown failure inside the model library`. Cold starts while online: `runtime refused: LICENSE_FAILED` (17:49:19) and `runtime refused: unknown failure inside the model library` (17:49:58, airplane on with Wi-Fi still on) |
+| License offline again | airplane on **and** Wi-Fi off (`svc wifi disable`), cold start 17:51:44: `runtime up: load 1631 ms warm 7555 ms threads 2`. The offline credential is accepted again, so the block is not cached on the phone |
+| Live-frame parity | still open: the phone was locked before the `dump_frame` re-run. To do at checkpoint 2 on a scene with people and colour |
+| Rotation | the 17:52:24 cold start logged `first frame 1280x720 rotation=90 …` while the portrait keyguard was up (expected; the landscape activity delivers 0) |
+
+Criterion 1 (in-process boxes in airplane mode): met. In-process RT-DETR on phone A boxes people with ✈ OFFLINE on the
+strip at 0.22 fps. The drone class proxy did not fire on the quadcopter (PIT-04 / DET-09, plan 02-06), and the
+license is blocked whenever phone A is online (open item below). H4 flip: not applied.
+
+**Open item (Chloe, platform.clika.io → Licenses):** all of the bundle's hardware seats are held by other units.
+Release a seat (a teammate's device or an old install) or raise `max_hardware` so that phone A is admitted. Until then,
+phone A must stay **strictly offline**: airplane mode on **and** Wi-Fi off, and any LAN it joins must have no upstream
+internet. If the license check reaches the server, the runtime stops mid-demo.
+
 ### PIT-04 — demo target decision (H3)
 
 _pending checkpoint 2 (plan 02-06)_
