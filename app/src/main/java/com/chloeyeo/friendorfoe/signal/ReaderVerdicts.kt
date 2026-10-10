@@ -15,7 +15,7 @@ import com.chloeyeo.friendorfoe.signal.GadgetLineCodec.ReaderEvent
  * | `UNKNOWN` / `AUTH_FAILED` (current nonce, wrong HMAC tag) | FOE · bad tag |
  * | `UNKNOWN` / `INVALID_MESSAGE` (wrong length, version, type or ids) | UNKNOWN · invalid message |
  * | `UNKNOWN` / `RADIO_ERROR` | UNKNOWN · gadget radio error |
- * | any RESULT with `replay:true` (an earlier verdict re-sent for a reused request id) | FOE · replayed nonce |
+ * | any RESULT with `replay:true` (the reader re-sending a stored verdict: ACK DUPLICATE + old RESULT, STATUS `last_result`) | UNKNOWN · stale result |
  * | FRIEND with any other reason, or an unknown reason | UNKNOWN · invalid result / the reason in lower case |
  */
 object ReaderVerdicts {
@@ -23,11 +23,13 @@ object ReaderVerdicts {
     const val BAD_TAG = "bad tag"
     const val INVALID_MESSAGE = "invalid message"
     const val RADIO_ERROR = "gadget radio error"
-    const val REPLAYED = "replayed nonce"
+    const val STALE_RESULT = "stale result"
     const val INVALID_RESULT = "invalid result"
 
     fun map(r: ReaderEvent.Result): Pair<VerdictKind, String?> = when {
-        r.replay -> VerdictKind.FOE to REPLAYED
+        // A stored verdict re-sent, not an answer to a fresh nonce: says nothing about the drone in view now,
+        // so never FRIEND, and not FOE either (the drone did nothing wrong; the request id was reused).
+        r.replay -> VerdictKind.UNKNOWN to STALE_RESULT
         r.verdict == "FRIEND" && r.reason == "NONE" && r.responseReceived -> VerdictKind.FRIEND to null
         r.verdict == "FRIEND" -> VerdictKind.UNKNOWN to INVALID_RESULT
         else -> when (r.reason) {

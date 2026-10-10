@@ -154,13 +154,14 @@ class ReaderLinkTest {
     }
 
     @Test
-    fun `a replayed RESULT is FOE replayed nonce, never FRIEND`() {
+    fun `a replayed RESULT is UNKNOWN stale result, never FRIEND or FOE`() {
         val (link, port) = attached()
         port.queries += lines("replay.txt")
         val out = link.run()
         val a = out.answer!!
-        assertEquals(VerdictKind.FOE, a.verdict)
-        assertEquals("replayed nonce", a.reason)
+        assertEquals(VerdictKind.UNKNOWN, a.verdict)
+        assertEquals("stale result", a.reason)
+        assertNull(a.droneId)
         assertNull(a.nonce)
         assertTrue(out.statusTexts.contains("reader: duplicate request id"))
         assertTrue(out.statusTexts.contains("reader did not log the challenge nonce"))

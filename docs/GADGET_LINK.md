@@ -117,7 +117,7 @@ RADIO_ERROR` (`FofProtocol.h`). The phone (`signal/ReaderVerdicts.kt`) fails clo
 | `UNKNOWN` / `AUTH_FAILED` (current nonce, wrong HMAC tag: an impostor) | **FOE** · bad tag |
 | `UNKNOWN` / `INVALID_MESSAGE` (wrong length, version, type, reader or drone id) | **UNKNOWN** · invalid message |
 | `UNKNOWN` / `RADIO_ERROR` | **UNKNOWN** · gadget radio error |
-| any RESULT with `replay:true` (an earlier verdict re-sent for a reused id, never an answer to this nonce) | **FOE** · replayed nonce |
+| any RESULT with `replay:true` (the reader re-sending a stored verdict: `ACK DUPLICATE` + the old RESULT, or `STATUS last_result`; never an answer to this nonce) | **UNKNOWN** · stale result |
 | FRIEND with another reason, UNKNOWN with `NONE`, an unknown reason | **UNKNOWN** · invalid result / the reason in words |
 | `ACK` BUSY / KEY_NOT_CONFIGURED / RADIO_ERROR / INVALID_* / COMMAND_TOO_LONG | **UNKNOWN** · gadget busy / gadget key not set / gadget radio error / gadget refused ... |
 | phone-side: no port, not handshaken, no ACK, no RESULT, reboot, unplug, download mode | **UNKNOWN** · no gadget / gadget not ready / gadget no ack / no response / gadget rebooted / gadget unplugged / gadget in download mode |

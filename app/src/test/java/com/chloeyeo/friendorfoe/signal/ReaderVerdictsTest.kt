@@ -19,8 +19,9 @@ class ReaderVerdictsTest {
             result("UNKNOWN", "AUTH_FAILED") to (VerdictKind.FOE to "bad tag"),
             result("UNKNOWN", "INVALID_MESSAGE") to (VerdictKind.UNKNOWN to "invalid message"),
             result("UNKNOWN", "RADIO_ERROR", received = false, responseMs = null) to (VerdictKind.UNKNOWN to "gadget radio error"),
-            result("FRIEND", "NONE", replay = true) to (VerdictKind.FOE to "replayed nonce"),
-            result("UNKNOWN", "NO_RESPONSE", received = false, replay = true, responseMs = null) to (VerdictKind.FOE to "replayed nonce"),
+            result("FRIEND", "NONE", replay = true) to (VerdictKind.UNKNOWN to "stale result"),
+            result("UNKNOWN", "NO_RESPONSE", received = false, replay = true, responseMs = null) to (VerdictKind.UNKNOWN to "stale result"),
+            result("UNKNOWN", "AUTH_FAILED", replay = true) to (VerdictKind.UNKNOWN to "stale result"),
         )
         for ((r, expected) in table) assertEquals(r.toString(), expected, ReaderVerdicts.map(r))
     }

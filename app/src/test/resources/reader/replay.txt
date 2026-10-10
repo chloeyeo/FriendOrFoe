@@ -1,5 +1,6 @@
 # Not captured: a QUERY whose id equals the reader's last completed id (reader.ino command()):
-# ACK accepted:true DUPLICATE, STATE, then the OLD RESULT re-sent with replay:true. Never a fresh answer.
+# ACK accepted:true DUPLICATE, STATE, then the OLD RESULT re-sent with replay:true. Never a fresh answer:
+# the phone draws UNKNOWN · stale result (never FRIEND, never FOE), whatever the old verdict was.
 {"event":"ACK","request_id":"@ID@","accepted":true,"reason":"DUPLICATE","state":"IDLE"}
 {"event":"STATE","boot_id":"@BOOT@","request_id":"@ID@","state":"IDLE","reason":"CHANGED"}
 {"event":"RESULT","request_id":"@ID@","query":1,"response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":460,"elapsed_ms":460,"replay":true}

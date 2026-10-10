@@ -111,7 +111,7 @@ class IffCoordinatorReaderTest {
         val cases = listOf(
             "no_response.txt" to "UNKNOWN · no response",
             "bad_tag.txt" to "FOE · bad tag",
-            "replay.txt" to "FOE · replayed nonce",
+            "replay.txt" to "UNKNOWN · stale result",
             "busy.txt" to "UNKNOWN · gadget busy",
         )
         for ((fixture, ring) in cases) {
