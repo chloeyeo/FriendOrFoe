@@ -70,7 +70,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Tapping a drone box locks it (id + rect, highlighted) for a 10 s window, and the lock stays on screen when the detector loses the object (for example when the prop is briefly occluded or moved).
   4. The status strip shows detector name, ms/frame, fps, model-ready state and an OFFLINE badge when airplane mode is on and no network is validated (the gadget dot is the one OBS-04 element that is wired in Phase 5 once the signal path exists; until then it is grey).
   5. PIT-04 is decided and written down: which target (a second phone's full-screen quadcopter image, a printed photo, or a toy) RT-DETR boxes reliably as aeroplane/bird/kite at score ≥ 0.25 at the demo distance; if no prop works, DET-09 is promoted (insert Phase 2.1: OWLv2 on device, benched first) and EVL-01/02 is cut first.
-**Plans**: TBD
+**Plans**: 6 plans
+Plans:
+- [ ] 02-01-PLAN.md — Status contract (`StatusUi.modelNote`), `setStatus`/`offlineProbe`, OfflineRule + OfflineProbe, ClikaRT default in Prefs, IoU de-dup and the `/v1/detections` parser (pure, JVM-tested)
+- [ ] 02-02-PLAN.md — ClikaRT bring-up with the tensor-op license probe, `ClikaRtDetector` (open/detectRaw/detect), real `HttpDetector` on port 8000 (H4 fallback), debug hooks + parity asset
+- [ ] 02-03-PLAN.md — Wall-clock sticky tracks (drone 5 s) and the 10 s box lock on tap in `IffCoordinator`
+- [ ] 02-04-PLAN.md — `RgbaPacker`, CameraX controller (UseCaseGroup + ViewPort, busy gate, first-frame log), preview slot in `CameraScreen`, `MainActivity` wiring, debug launch extras
+- [ ] 02-05-PLAN.md — Phone checkpoint 1: airplane-mode bring-up, live boxes, PNG dump + parity vs the CLI, edge mapping, OFFLINE badge, tap lock; H4 branch if the AAR refuses
+- [ ] 02-06-PLAN.md — Phone checkpoint 2: thread/resolution runs, PIT-04 prop decision, README section 10 numbers, H4 gate
 **UI hint**: yes
 
 **HARD CHECKPOINT (H4):** if criterion 1 is not met on the phone — license, model load, or latency far below 1 fps — switch the one config value in `Detectors.create` to `HttpDetector` (laptop `serve --offline` on the LAN) and continue; criteria 2–5 then hold with the HTTP detector. Do not spend past H4 debugging the AAR; the five-step on-device checklist (PITFALLS.md #44: license code name → model files/path → RGBA stride/channel dump vs the CLI → label ids → threshold) is re-run in the Phase 6 buffer, and `HttpDetector` must be unselectable in the demo build unless that re-run also fails.
