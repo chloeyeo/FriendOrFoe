@@ -280,7 +280,7 @@ Status key: **Radio** = running on the boards today · **Radio code + host test*
 
 The app has 7,840 lines of main Kotlin and 4,083 lines of tests. The reader-link tests replay FRIEND and NO_RESPONSE lines captured on the firmware bench; the other reader lines are built from `reader.ino`'s format strings, and reboot, unplug and malformed input are scripted in a fake port.
 
-**Process.** 118 commits between 12:51 and 22:32 on the day; three streams working against fakes, an `area: what` commit convention and planning in `.planning/`. A history scan confirms that no license, model weight or APK was ever committed. There is no CI; tests were run locally.
+**Process.** 120 commits between 12:51 and 23:44 on the day; three streams working against fakes, an `area: what` commit convention and planning in `.planning/`. A history scan confirms that no license, model weight or APK was ever committed. There is no CI; tests were run locally.
 
 ---
 
