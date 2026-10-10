@@ -131,8 +131,10 @@ class Prefs(context: Context) {
         get() = DetectorConfig.Dual(defaultDroneModelDir, null)
 
     /** The drone-trained YOLO11n ONNX alone (`yolo` / `yolo<N>` launch extras), `files/models/drone_yolo11n_<N>.onnx`. */
-    fun yoloConfig(input: Int = 480): DetectorConfig =
-        DetectorConfig.Dual(File(filesRoot, "models/drone_yolo11n_$input.onnx").path, null)
+    fun yoloConfig(input: Int = 480): DetectorConfig = yoloFile("drone_yolo11n_$input")
+
+    /** `files/models/<name>.onnx` alone (the `yolo:<name>` launch extra, e.g. `yolo:tom_256x416`). */
+    fun yoloFile(name: String): DetectorConfig = DetectorConfig.Dual(File(filesRoot, "models/$name.onnx").path, null)
 
     /** The same pair at 640x640, for the `dual640` launch extra (A/B against the 320 default). */
     val dual640Config: DetectorConfig

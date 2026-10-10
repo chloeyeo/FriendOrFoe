@@ -9,14 +9,17 @@ import io.clika.runtime.Tensors
 import java.io.File
 
 /**
- * A drone-trained YOLO (v8/11 head, e.g. `marie-kjelberg/drone-detector` YOLO11n) exported to a fixed-size fp32 ONNX
+ * A drone-trained YOLO (v8/11 head: `TomSmail/drone-yolo-v1` YOLOv8n, `marie-kjelberg/drone-detector` YOLO11n) exported to a fixed-size fp32 ONNX
  * file, run in-process through ClikaRT's low-level graph runtime (still ClikaRT, still offline):
  * `OnnxModel.open` -> `compile(sampleInputs = images[1,3,S,S])` -> `optimize(specialize = true)` (2-4x faster on
- * the CPU) -> `finalizeGraph`, then `run` per frame. The input size S is read from the model's input spec.
+ * the CPU) -> `finalizeGraph`, then `run` per frame. The input H x W is read from the model's input spec (a square,
+ * or a 16:9-ish rectangle such as 256x416 that wastes less of a landscape frame on padding).
  *
- * Per frame: letterbox the RGBA frame to S x S (grey 114, nearest sampling), RGB, /255, NCHW; the output
- * `[1, 4 + nc, N]` holds cx, cy, w, h in S pixels and already-sigmoided class scores; [YoloDecode] keeps rows
- * >= [MIN_SCORE], runs greedy NMS and maps the boxes back to frame pixels. Blocking; runtime lane only.
+ * Per frame: letterbox the RGBA frame to H x W (grey 114, nearest sampling), RGB, /255, NCHW; the output
+ * `[1, 4 + nc, N]` holds cx, cy, w, h in model pixels and already-sigmoided class scores; [YoloDecode] keeps rows
+ * >= [MIN_SCORE], runs greedy NMS, maps the boxes back to frame pixels and drops boxes over [MAX_AREA] of the frame
+ * (the benchmark's whole-frame false alarms on grey clutter; a close drone filled 27%). Every class is a drone type
+ * (TomSmail: quadcopter, fixed-wing), so rows leave as label 0. Blocking; runtime lane only.
  */
 class OnnxYoloDetector(
     private val modelPath: String,
@@ -34,7 +37,8 @@ class OnnxYoloDetector(
     private var timing: OpenTiming? = null
 
     private var inputName = "images"
-    private var size = 0
+    private var inH = 0
+    private var inW = 0
     private var input = FloatArray(0)
 
     override val isOpen: Boolean get() = graph != null
@@ -51,10 +55,11 @@ class OnnxYoloDetector(
         val g = try {
             val spec = m.inputs().first()
             inputName = spec.name
-            size = spec.dims[2].toInt()
-            check(size in 64..1280 && spec.dims[3].toInt() == size) { "${file.name}: input must be a fixed square, got ${spec.dims.toList()}" }
-            input = FloatArray(3 * size * size)
-            val shape = longArrayOf(1, 3, size.toLong(), size.toLong())
+            inH = spec.dims[2].toInt()
+            inW = spec.dims[3].toInt()
+            check(inH in 64..1280 && inW in 64..1280) { "${file.name}: input must be fixed, got ${spec.dims.toList()}" }
+            input = FloatArray(3 * inH * inW)
+            val shape = longArrayOf(1, 3, inH.toLong(), inW.toLong())
             val graph = Tensors.zeros(shape).use { sample -> m.compile(CompileOptions(sampleInputs = mapOf(inputName to sample))) }
             graph.optimize(OptimizeOptions(DefaultsOptions(specialize = true)))
             graph.finalizeGraph()
@@ -66,7 +71,7 @@ class OnnxYoloDetector(
         model = m
         graph = g
         val t1 = System.nanoTime()
-        run(ByteArray(size * size * 4), size, size) // warm-up
+        run(ByteArray(inW * inH * 4), inW, inH) // warm-up
         val t2 = System.nanoTime()
         return OpenTiming((t1 - t0) / 1_000_000, (t2 - t1) / 1_000_000).also { timing = it }
     }
@@ -80,8 +85,8 @@ class OnnxYoloDetector(
 
     private fun run(rgba: ByteArray, w: Int, h: Int): List<RawDetection> {
         val g = graph ?: error("not open")
-        val lb = YoloDecode.letterbox(rgba, w, h, size, input)
-        val out = Tensors.of(input, longArrayOf(1, 3, size.toLong(), size.toLong())).use { x ->
+        val lb = YoloDecode.letterbox(rgba, w, h, inW, inH, input)
+        val out = Tensors.of(input, longArrayOf(1, 3, inH.toLong(), inW.toLong())).use { x ->
             val outs = g.run(listOf(x))
             try {
                 outs[0].shape() to outs[0].toFloatArray()
@@ -90,7 +95,7 @@ class OnnxYoloDetector(
             }
         }
         val n = out.first.last().toInt()
-        return YoloDecode.decode(out.second, n, lb, MIN_SCORE, w, h)
+        return YoloDecode.decode(out.second, n, lb, MIN_SCORE, w, h, maxArea = MAX_AREA)
     }
 
     override fun close() {
@@ -104,6 +109,9 @@ class OnnxYoloDetector(
     companion object {
         /** Rows below this never leave the detector; the [ClassMap] floor decides what the app keeps. */
         const val MIN_SCORE = 0.15f
+
+        /** Boxes covering more than this share of the frame are dropped (whole-frame false alarms). */
+        const val MAX_AREA = 0.6f
     }
 }
 
@@ -112,20 +120,20 @@ data class Letterbox(val scale: Float, val padX: Float, val padY: Float)
 
 /** Pure-Kotlin pre/post-processing for [OnnxYoloDetector] (unit-tested on the JVM). */
 object YoloDecode {
-    /** Writes the letterboxed RGB/255 NCHW image of the [w] x [h] RGBA frame into [dst] (3 x [s] x [s]). */
-    fun letterbox(rgba: ByteArray, w: Int, h: Int, s: Int, dst: FloatArray): Letterbox {
-        val scale = minOf(s.toFloat() / w, s.toFloat() / h)
-        val nw = Math.round(w * scale).coerceIn(1, s)
-        val nh = Math.round(h * scale).coerceIn(1, s)
-        val left = (s - nw) / 2
-        val top = (s - nh) / 2
-        val plane = s * s
+    /** Writes the letterboxed RGB/255 NCHW image of the [w] x [h] RGBA frame into [dst] (3 x [outH] x [outW]). */
+    fun letterbox(rgba: ByteArray, w: Int, h: Int, outW: Int, outH: Int, dst: FloatArray): Letterbox {
+        val scale = minOf(outW.toFloat() / w, outH.toFloat() / h)
+        val nw = Math.round(w * scale).coerceIn(1, outW)
+        val nh = Math.round(h * scale).coerceIn(1, outH)
+        val left = (outW - nw) / 2
+        val top = (outH - nh) / 2
+        val plane = outW * outH
         java.util.Arrays.fill(dst, 0, 3 * plane, 114f / 255f)
         val xs = IntArray(nw) { minOf(w - 1, ((it + 0.5f) / scale).toInt()) }
         for (y in 0 until nh) {
             val sy = minOf(h - 1, ((y + 0.5f) / scale).toInt())
             val rowIn = sy * w
-            val rowOut = (top + y) * s + left
+            val rowOut = (top + y) * outW + left
             for (x in 0 until nw) {
                 val p = (rowIn + xs[x]) * 4
                 val o = rowOut + x
@@ -139,9 +147,13 @@ object YoloDecode {
 
     /**
      * Rows of the `[1, 4 + nc, n]` output [o] with a best class score >= [minScore], greedy NMS per class at
-     * [nmsIou], boxes mapped back through [lb] and clamped to the [w] x [h] frame; score-descending.
+     * [nmsIou], boxes mapped back through [lb] and clamped to the [w] x [h] frame, boxes over [maxArea] of the frame
+     * dropped; every class leaves as label 0 (all classes are drone types); score-descending.
      */
-    fun decode(o: FloatArray, n: Int, lb: Letterbox, minScore: Float, w: Int, h: Int, nmsIou: Float = 0.45f, maxRows: Int = 20): List<RawDetection> {
+    fun decode(
+        o: FloatArray, n: Int, lb: Letterbox, minScore: Float, w: Int, h: Int,
+        nmsIou: Float = 0.45f, maxRows: Int = 20, maxArea: Float = 1f,
+    ): List<RawDetection> {
         val nc = o.size / n - 4
         val cands = ArrayList<RawDetection>()
         for (i in 0 until n) {
@@ -159,13 +171,14 @@ object YoloDecode {
                 ((cx + bw / 2 - lb.padX) / lb.scale).coerceIn(0f, w.toFloat()),
                 ((cy + bh / 2 - lb.padY) / lb.scale).coerceIn(0f, h.toFloat()),
             )
-            cands += RawDetection(c.toLong(), sc, box, "drone")
+            if (box.area > maxArea * w * h) continue
+            cands += RawDetection(0L, sc, box, "drone")
         }
         cands.sortByDescending { it.score }
         val keep = ArrayList<RawDetection>()
         for (d in cands) {
             if (keep.size >= maxRows) break
-            if (keep.none { it.labelId == d.labelId && iou(it.box, d.box) > nmsIou }) keep += d
+            if (keep.none { iou(it.box, d.box) > nmsIou }) keep += d
         }
         return keep
     }

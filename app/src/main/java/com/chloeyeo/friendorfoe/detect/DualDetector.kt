@@ -156,11 +156,15 @@ class DualDetector(
         fun yolo(droneFile: String, personDir: String?): DualDetector {
             val fileName = java.io.File(droneFile).nameWithoutExtension
             return DualDetector(
-                drone = OnnxYoloDetector(droneFile, ClassMap.DRONE_YOLO),
+                drone = OnnxYoloDetector(droneFile, ClassMap.yolo(fileName, yoloFloor)),
                 person = personDir?.let { ClikaRtDetector(it, ClassMap.DFINE_PERSON, "clikart:" + java.io.File(it).name) },
                 name = "clikart:$fileName",
             )
         }
+
+        /** The `yolo_thr` launch extra: a drone floor for every YOLO file, this process only (null = per-file default). */
+        @Volatile
+        var yoloFloor: Float? = null
 
         private val INPUT_SUFFIX = Regex("_([0-9]{3})$")
 

@@ -67,8 +67,8 @@ data class ClassMap(
         val DRONE_RAHUL_CROP = DRONE_RAHUL.copy(tag = "crop", thresholds = mapOf(ObjClass.DRONE to 0.25f))
 
         /**
-         * A drone-trained YOLO11n ONNX (`marie-kjelberg/drone-detector`, one class): 0 drone >= 0.40. The model
-         * carries no label table, so nothing is checked at open.
+         * A drone-trained YOLO ONNX ([OnnxYoloDetector] folds every class into 0): drone >= 0.40 (marie YOLO11n).
+         * The model carries no label table, so nothing is checked at open. [yolo] picks the floor per file.
          */
         val DRONE_YOLO = ClassMap(
             tag = "yolo",
@@ -77,6 +77,15 @@ data class ClassMap(
             expectedLabelCount = null,
             expectedLabels = emptyMap(),
         )
+
+        /** TomSmail YOLOv8n (quadcopter + fixed-wing): the benchmark's floor is 0.20 with the big-box drop. */
+        val DRONE_YOLO_TOM = DRONE_YOLO.copy(thresholds = mapOf(ObjClass.DRONE to 0.20f))
+
+        /** The class map for YOLO file [fileName]: TomSmail files (`tom*`) at 0.20, the rest at 0.40; [floor] overrides. */
+        fun yolo(fileName: String, floor: Float? = null): ClassMap {
+            val base = if (fileName.lowercase().startsWith("tom")) DRONE_YOLO_TOM else DRONE_YOLO
+            return if (floor == null) base else base.copy(thresholds = mapOf(ObjClass.DRONE to floor))
+        }
 
         /** `ustc-community/dfine-small-coco` (D-FINE S, COCO 80): only 0 person >= 0.50, everything else dropped. */
         val DFINE_PERSON = ClassMap(

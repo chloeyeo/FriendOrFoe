@@ -5,6 +5,7 @@ import android.util.Log
 import android.util.Size
 import com.chloeyeo.friendorfoe.BuildConfig
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
+import com.chloeyeo.friendorfoe.detect.DualDetector
 import com.chloeyeo.friendorfoe.detect.LoadKnobs
 import com.chloeyeo.friendorfoe.detect.ModelDirs
 import com.chloeyeo.friendorfoe.detect.RoundScheduler
@@ -101,6 +102,10 @@ data class LaunchOptions(
                     Log.w(TAG, "launch extra person_model ignored (needs the dual detector and a plain dir name)")
                 }
             }
+            if (intent.hasExtra("yolo_thr")) {
+                DualDetector.yoloFloor = intent.getFloatExtra("yolo_thr", 0.4f).coerceIn(0.05f, 0.95f)
+                Log.i(TAG, "launch extra yolo_thr -> ${DualDetector.yoloFloor}")
+            }
             intent.getStringExtra("crop_model")?.trim()?.let { name ->
                 when {
                     name == "none" -> ModelDirs.cropName = null
@@ -140,7 +145,10 @@ data class LaunchOptions(
                 "yolo416" -> app.prefs.yoloConfig(416)
                 "yolo480" -> app.prefs.yoloConfig(480)
                 "yolo640" -> app.prefs.yoloConfig(640)
-                else -> when (val d = DetectorConfig.decode(value)) {
+                else -> if (value.trim().startsWith("yolo:")) {
+                    val name = value.trim().removePrefix("yolo:")
+                    if (ModelDirs.isPlainName(name)) app.prefs.yoloFile(name) else null.also { Log.w(TAG, "detector extra ignored: bad yolo file name") }
+                } else when (val d = DetectorConfig.decode(value)) {
                     is DetectorConfig.ClikaRt ->
                         if (inAppStorage(app, d.modelDir)) d else null.also { Log.w(TAG, "detector extra ignored: dir outside app storage") }
                     is DetectorConfig.Dual ->
