@@ -390,7 +390,8 @@ class IffCoordinator(
                     .firstOrNull { it is SignalEvent.Answer } as SignalEvent.Answer?
             }
             if (answer != null) {
-                onAnswer(seq, answer, (elapsedMillis() - t0).coerceAtLeast(0L))
+                // A source that waited for the gadget before writing measures its own write-to-result time.
+                onAnswer(seq, answer, answer.linkRoundTripMs ?: (elapsedMillis() - t0).coerceAtLeast(0L))
                 return
             }
         } catch (e: CancellationException) {
@@ -436,7 +437,7 @@ class IffCoordinator(
 
     /**
      * An answer the signal source received for no open challenge (it arrived after its window closed or after a
-     * Reset, see `AnswerRouter`): never drawn, but logged and its nonce spent in the phone's ledger, so the same
+     * Reset, or a result for an earlier request id, see `ReaderLink`): never drawn, but logged and its nonce spent in the phone's ledger, so the same
      * nonce is refused if it is ever replayed.
      */
     fun lateAnswer(answer: SignalEvent.Answer, why: String) {
@@ -463,7 +464,7 @@ class IffCoordinator(
     /**
      * The Reset button (OBS-10): forgets the tracks, the nonce ledger, every verdict, the lock, the gadget panel
      * rows and the event log, so a rehearsal and the live run start clean. The challenge in flight is cancelled
-     * (the USB source then treats the gadget as busy until its answer arrives, see `AnswerRouter`), and an answer
+     * (the USB source then waits for the reader's STATE IDLE before the next QUERY, see `ReaderLink`), and an answer
      * that still reaches the session is dropped as late. Track ids keep counting up (see [Tracker.reset]).
      */
     fun reset() {

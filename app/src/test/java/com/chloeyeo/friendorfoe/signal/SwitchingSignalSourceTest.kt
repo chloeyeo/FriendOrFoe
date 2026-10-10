@@ -84,7 +84,7 @@ class SwitchingSignalSourceTest {
         for (mode in FakeMode.entries - FakeMode.SILENT) {
             val events = FakeSignalSource(mode, delayMs = { 0L }).challenge(req).toList()
             val answer = events.filterIsInstance<SignalEvent.Answer>().single()
-            assertEquals(mode.name, 16, answer.nonce.size)
+            assertEquals(mode.name, 16, answer.nonce!!.size)
             assertTrue(mode.name, events.first() is SignalEvent.Status)
         }
     }

@@ -9,7 +9,8 @@ object Redact {
 
     fun hexRuns(text: String): String = LONG_HEX.replace(text) { it.value.take(8) + "…" }
 
-    fun nonce(nonce: ByteArray): String = Hex.encode(nonce).take(8) + "…"
+    /** The 8-hex prefix of [nonce] plus `…`; `n/a` when the gadget did not report it. */
+    fun nonce(nonce: ByteArray?): String = nonce?.let { Hex.encode(it).take(8) + "…" } ?: "n/a"
 
     /** A gadget line for a log row: hex runs cut, at most [max] characters. */
     fun line(text: String, max: Int = 80): String {

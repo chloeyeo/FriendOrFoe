@@ -127,4 +127,17 @@ class ReChecksTest {
         checks.reset()
         assertEquals(VerdictKind.FRIEND, checks.check(answer(nonce = n.copyOf()), 300).verdict)
     }
+
+    @Test
+    fun `a missing nonce skips only the replay check, with a note`() {
+        val checks = ReChecks()
+        val missing = SignalEvent.Answer(VerdictKind.FRIEND, null, "drone 1", null, null, 460, SignalKind.USB_GADGET)
+        val r = checks.check(missing, 480)
+        assertEquals(VerdictKind.FRIEND, r.verdict)
+        assertTrue(r.notes.contains("nonce not reported; replay check skipped"))
+        assertTrue(r.notes.contains("rssi not reported; signal check skipped"))
+        assertEquals(0, checks.seenCount)
+        assertEquals(VerdictKind.FRIEND, checks.check(missing, 480).verdict)
+        assertEquals("late response", checks.check(missing.copy(responseMs = 2600), 2700).reason)
+    }
 }
