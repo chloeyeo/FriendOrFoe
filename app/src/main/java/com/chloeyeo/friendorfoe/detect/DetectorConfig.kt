@@ -8,13 +8,20 @@ sealed interface DetectorConfig {
     /** On-device RT-DETR v2 through ClikaRT; [modelDir] is the pushed snapshot directory. */
     data class ClikaRt(val modelDir: String) : DetectorConfig
 
+    /**
+     * Two on-device models through ClikaRT ([DualDetector]): a drone specialist in [droneDir] and a person detector
+     * in [personDir], both pushed snapshot directories.
+     */
+    data class Dual(val droneDir: String, val personDir: String) : DetectorConfig
+
     /** The laptop `clikart-cli serve` at [baseUrl] (debug builds only). */
     data class Http(val baseUrl: String) : DetectorConfig
 
-    /** The one-line form stored in Prefs: `fake`, `clikart:<modelDir>`, `http:<baseUrl>`. */
+    /** The one-line form stored in Prefs: `fake`, `clikart:<modelDir>`, `dual:<droneDir>|<personDir>`, `http:<baseUrl>`. */
     fun encode(): String = when (this) {
         Fake -> "fake"
         is ClikaRt -> "clikart:$modelDir"
+        is Dual -> "dual:$droneDir|$personDir"
         is Http -> "http:$baseUrl"
     }
 
@@ -24,9 +31,15 @@ sealed interface DetectorConfig {
             val s = text?.trim().orEmpty()
             return when {
                 s.startsWith("clikart:") && s.length > 8 -> ClikaRt(s.substring(8))
+                s.startsWith("dual:") -> decodeDual(s.substring(5))
                 s.startsWith("http:") && s.length > 5 -> Http(s.substring(5))
                 else -> Fake
             }
+        }
+
+        private fun decodeDual(rest: String): DetectorConfig {
+            val parts = rest.split('|')
+            return if (parts.size == 2 && parts.all { it.isNotBlank() }) Dual(parts[0], parts[1]) else Fake
         }
     }
 }
