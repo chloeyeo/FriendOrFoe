@@ -124,12 +124,19 @@ object ClikaEngine {
     }
   }
 
-  /** Raw rows of one tightly packed RGBA frame from both models, in frame pixels, tagged with the model. Lane only. */
-  fun detect(rgba: ByteArray, width: Int, height: Int): List<Map<String, Any>> {
+  /**
+   * Raw rows of one tightly packed RGBA frame, in frame pixels, tagged with the model, from the models tagged in
+   * [only] (all when null): a class switched off in Settings does not cost its model's seconds. Lane only.
+   */
+  fun detect(rgba: ByteArray, width: Int, height: Int, only: Set<String>? = null): List<Map<String, Any>> {
     val opened = models
     check(opened.isNotEmpty()) { "model not open" }
     val rows = ArrayList<Map<String, Any>>()
     for (m in opened) {
+      if (only != null && m.tag !in only) {
+        m.lastMs = 0L
+        continue
+      }
       val t0 = System.nanoTime()
       val found = m.pipeline(ImageInput.Rgba8888(rgba, width, height), options())
       m.lastMs = (System.nanoTime() - t0) / 1_000_000

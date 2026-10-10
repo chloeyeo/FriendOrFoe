@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FofRuntime, hasNativeCamera } from '../../modules/fof-native';
 import type { SignalUi } from '../core/types';
-import type { Settings } from '../app/settings';
+import { modelsFor, type Settings } from '../app/settings';
 import { useSession } from '../app/useSession';
 import { haptics } from './haptics';
 import { useLayout } from './layout';
@@ -22,15 +22,19 @@ import { colors } from './theme';
 export function ObserverScreen({ settings, onSettings }: { settings: Settings; onSettings: (s: Settings) => void }) {
   const session = useSession(settings);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The results column can be closed so the camera takes the whole screen; a button on the camera reopens it.
+  const [panelOpen, setPanelOpen] = useState(true);
   const insets = useSafeAreaInsets();
   const layout = useLayout();
   const { state } = session;
+  const resultCount = state.events.filter((e) => e.verdict).length;
   const gadgetLabel = settings.signal === 'fake' ? 'Sim gadget' : 'Gadget';
 
   const camera: CameraProps | null =
     hasNativeCamera && settings.detector !== 'fake' && session.cameraGranted
       ? {
           detector: settings.detector,
+          models: modelsFor(settings),
           serveUrl: settings.serveUrl,
           intervalMs: settings.intervalMs,
           thumbnailUrl: settings.dashboardUrl.trim(),
@@ -65,6 +69,10 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
       camera={camera}
       onPreviewLayout={session.onPreviewLayout}
       onTapDrone={onTapDrone}
+      onZoom={session.zoomBy}
+      panelOpen={panelOpen}
+      onOpenPanel={() => setPanelOpen(true)}
+      resultCount={resultCount}
       overlay={
         variant === 'immersive' ? (
           <>
@@ -91,6 +99,7 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
       onConnectGadget={session.connectGadget}
       onOpenSettings={() => setSettingsOpen(true)}
       onReset={session.reset}
+      onClose={() => setPanelOpen(false)}
     />
   );
 
@@ -101,20 +110,22 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
       {layout.mode === 'phone' ? (
         <View style={styles.row}>
           {observation('immersive')}
-          {results(layout.resultsWidth)}
+          {panelOpen ? results(layout.resultsWidth) : null}
         </View>
       ) : layout.mode === 'portrait' ? (
         <>
           <Masthead status={state.status} gadgetLabel={gadgetLabel} compact />
-          <View style={{ height: Math.round(Math.max(220, Math.min(layout.height * 0.45, layout.width * 0.8))) }}>{observation('panel')}</View>
-          {results()}
+          <View style={panelOpen ? { height: Math.round(Math.max(220, Math.min(layout.height * 0.45, layout.width * 0.8))) } : styles.fill}>
+            {observation('panel')}
+          </View>
+          {panelOpen ? results() : null}
         </>
       ) : (
         <>
           <Masthead status={state.status} gadgetLabel={gadgetLabel} />
           <View style={styles.row}>
             {observation('panel')}
-            {results(layout.resultsWidth)}
+            {panelOpen ? results(layout.resultsWidth) : null}
           </View>
         </>
       )}
@@ -139,6 +150,7 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface0 },
   row: { flex: 1, flexDirection: 'row', minHeight: 0 },
+  fill: { flex: 1 },
   brandChip: { backgroundColor: colors.scrim, paddingHorizontal: 8, paddingVertical: 3 },
   sheet: { backgroundColor: colors.surface0 },
 });

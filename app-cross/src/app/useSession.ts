@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { FofRuntime, hasNativeCamera, type CameraErrorEvent, type CameraFrameEvent, type GrayEvent } from '../../modules/fof-native';
-import type { EventUi, RawDetection } from '../core/types';
+import type { EventUi, ObjClass, RawDetection } from '../core/types';
 import { toDetections } from '../detect/dedup';
 import { labelIdFor } from '../detect/labelMap';
+import { confirmDrones } from '../detect/verify';
 import { parseDetections } from '../detect/detectionsJson';
 import { FakeDetector } from '../detect/fakeDetector';
 import { EventClient } from '../net/eventClient';
@@ -85,13 +86,22 @@ export function useSession(settings: Settings) {
     if (c.signalSource instanceof FakeSignalSource) c.signalSource.mode = settings.fakeMode;
   }, [c, settings.fakeMode, settings.signal]);
 
+  // A class switched off disappears at once (and its model stops running, see modelsFor).
+  useEffect(() => {
+    const off: ObjClass[] = [];
+    if (!settings.detectPerson) off.push('PERSON');
+    if (!settings.detectDrone) off.push('DRONE');
+    if (!settings.detectBird) off.push('BIRD');
+    c.hideClasses(off);
+  }, [c, settings.detectPerson, settings.detectDrone, settings.detectBird]);
+
   useEffect(() => {
     c.reChecks.config = { rttBudgetMs: settings.rttBudgetMs, rssiFloorDbm: settings.rssiFloorDbm, strict: settings.strictPhysical };
     c.challengerId = settings.challengerId;
     c.acceptedDroneIds = acceptedIds(settings);
-    // The iPhone detector runs several times a second, so a one-frame false drone can be held back for a frame;
-    // phone A's ClikaRT takes seconds per frame, where waiting a frame would cost seconds.
-    c.confirmHits = settings.detector === 'coreml' ? 2 : 1;
+    // The iPhone detector runs several times a second, so a false drone that flickers for a frame or two is held back
+    // (about 1 s at 0.5 s per frame); phone A's ClikaRT takes seconds per frame, where waiting would cost seconds.
+    c.confirmHits = settings.detector === 'coreml' ? 3 : 1;
   }, [c, settings]);
 
   // Camera permission, once, on a build with the camera pane.
@@ -121,7 +131,11 @@ export function useSession(settings: Settings) {
       c.previewMode = 'fit';
       note('simulated detector', true);
       const fake = new FakeDetector();
-      const timer = setInterval(() => c.tick({ width: 1280, height: 720, detections: fake.detect(1280, 720), msPerFrame: 0 }), settings.intervalMs);
+      const timer = setInterval(() => {
+        const on = classesRef.current;
+        const detections = fake.detect(1280, 720).filter((d) => (d.cls === 'PERSON' ? on.detectPerson : on.detectDrone));
+        c.tick({ width: 1280, height: 720, detections, msPerFrame: 0 });
+      }, settings.intervalMs);
       return () => clearInterval(timer);
     }
     c.previewMode = 'fill';
@@ -166,6 +180,8 @@ export function useSession(settings: Settings) {
   const thresholds = { person: settings.personThreshold, drone: settings.droneThreshold };
   const thresholdsRef = useRef(thresholds);
   thresholdsRef.current = thresholds;
+  const classesRef = useRef(settings);
+  classesRef.current = settings;
 
   const onFrame = useCallback(
     (e: CameraFrameEvent) => {
@@ -183,8 +199,10 @@ export function useSession(settings: Settings) {
               score: r.score,
               box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom },
               label: r.label,
+              model: r.model,
             }))
           : parseDetections(e.body ?? '');
+        rows = confirmDrones(rows);
       } catch (err) {
         frameFailed.current = true;
         c.setStatus((s) => ({ ...s, modelNote: (err as Error).message.slice(0, 80) }));
@@ -194,7 +212,11 @@ export function useSession(settings: Settings) {
         frameFailed.current = false;
         c.setStatus((s) => ({ ...s, modelNote: e.note ?? loadNote.current }));
       }
-      c.tick({ width: e.width, height: e.height, detections: toDetections(rows, thresholdsRef.current), msPerFrame: e.ms, timestampMs: e.ts });
+      const on = classesRef.current;
+      const detections = toDetections(rows, thresholdsRef.current).filter(
+        (d) => (d.cls === 'PERSON' && on.detectPerson) || (d.cls === 'DRONE' && on.detectDrone) || (d.cls === 'BIRD' && on.detectBird),
+      );
+      c.tick({ width: e.width, height: e.height, detections, msPerFrame: e.ms, timestampMs: e.ts });
     },
     [c],
   );
@@ -249,10 +271,11 @@ export function useSession(settings: Settings) {
   }, [c, settings.dashboardUrl]);
 
   const challenge = useCallback((id: number) => c.challenge(id), [c]);
+  const zoomBy = useCallback((factor: number) => c.rescale(factor), [c]);
   const reset = useCallback(() => c.reset(), [c]);
   const connectGadget = useCallback(() => {
     usbSource?.connect().catch((e: Error) => c.log(`gadget · ${e.message}`));
   }, [c, usbSource]);
 
-  return { state, onFrame, onGray, onCameraError, onPreviewLayout, challenge, reset, gadget, connectGadget, cameraGranted };
+  return { state, onFrame, onGray, onCameraError, zoomBy, onPreviewLayout, challenge, reset, gadget, connectGadget, cameraGranted };
 }

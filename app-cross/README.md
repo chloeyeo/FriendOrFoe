@@ -128,22 +128,24 @@ same session code. This is a second screen, not the SC1 path: phone A's ClikaRT 
 |---|---|---|
 | `FofCoco` (YOLO11n, COCO) | Ultralytics `yolo11n.pt` | person, bird |
 | `FofDrone` (YOLO11s) | [sapoepsilon/yolov11s-drone-detector](https://huggingface.co/sapoepsilon/yolov11s-drone-detector) (Apache-2.0) | drone |
+| `FofDrone2` (YOLOv8) | [TomSmail/drone-yolo-v1](https://huggingface.co/TomSmail/drone-yolo-v1) (CC-BY-4.0) | confirms FofDrone, never drawn |
 
-How the models were chosen, measured on 13 real drone photos (DJI Phantom 4, Inspire, Mavic 2/Pro/Mini, FPV racers,
-a VTOL fixed-wing) and 40 drone-free COCO val2017 images:
+How the drone rule was chosen, measured on 20 real drone photos and 168 drone-free COCO images. The drones are DJI
+Phantom 4, Inspire, Mavic 2/Pro/Mini/Mini 4, FPV racers, hexacopters, a VTOL fixed-wing and a Parrot AR.
 
-| Detector | Drones found | Drone-free images that fired |
+| Rule | Drones found | Drone-free images that fired |
 |---|---|---|
-| FofDrone at 0.78 (used) | 9/13 | 1/40 (a real airplane) |
-| FofDrone at 0.6 | 12/13 | 4/40 (a small potted plant, a real airplane, a bat and a skateboard in the air) |
-| FofDrone at 0.3 | 12/13 | 13/40 |
-| TomSmail/drone-yolo-v1 at 0.6 | 8/13 | 6/40 |
-| COCO airplane/kite proxy at 0.5 | 8/13 | 1/40, and none of the drones FofDrone missed |
+| FofDrone ≥ 0.78 confirmed by FofDrone2 (used) | 14/20 | 2/168 |
+| FofDrone ≥ 0.78 alone | 14/20 | 3/168 |
+| FofDrone ≥ 0.6 alone (13-photo set) | 12/13 | 4/40 (a potted plant, a real airplane, a bat, a skateboard) |
+| FofDrone ≥ 0.9 | 2/20 | 0/168 |
+| box-shape filter, or a veto when COCO recognises the object as something else | no gain | – |
 | flying-objects YOLOv8m (rendered sky scenes) | 0/13 | it called every real drone an "airplane" |
 
-At 0.6 the phone still drew drones on everyday objects, so the floor is 0.78. On top of it, a drone is drawn
-only once it has been matched in two frames. Frames come every 0.5 s on
-the iPhone, so a one-frame false box never shows. Settings → Drone threshold trades misses for false drones.
+On top of the rule, a drone is drawn, and can be challenged, only after it has been matched in three frames (about
+1 s at 0.5 s per frame). That hides boxes that flicker for a frame or two. An object the models consistently mistake
+for a drone still shows. Then raise Settings → Drone threshold, or switch a class off in Settings → Detect: a class
+that is off is not drawn and its model does not run.
 Birds are a class of their own in this
 app (`BIRD`): drawn, logged, never challengeable. The native app still counts COCO bird as a drone proxy.
 
@@ -156,7 +158,7 @@ APPLE_TEAM_ID=<your team id> npx expo run:ios --device --configuration Release
 ```
 
 `scripts/export-coreml.sh` builds the compiled models into `modules/fof-native/ios/Models/`. The models are
-gitignored: about 23 MB in total. If `pod install` crawls on the React Native core download (repo1.maven.org can drop to
+gitignored: about 29 MB in total. If `pod install` crawls on the React Native core download (repo1.maven.org can drop to
 about 25 KB/s on one connection), fetch the three release tarballs yourself and point `RCT_TESTONLY_RNCORE_TARBALL_PATH`,
 `RCT_USE_LOCAL_RN_DEP` and `HERMES_ENGINE_TARBALL_PATH` at them.
 

@@ -9,6 +9,7 @@ import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import android.util.Size
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
@@ -53,6 +54,7 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
 
   private val onFrame by EventDispatcher<Map<String, Any?>>()
   private val onGray by EventDispatcher<Map<String, Any?>>()
+  private val onCameraReady by EventDispatcher<Map<String, Any?>>()
   private val onCameraError by EventDispatcher<Map<String, Any?>>()
 
   private val previewView = PreviewView(context).apply {
@@ -66,9 +68,15 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
   @Volatile var serveUrl: String = ""
   @Volatile var intervalMs: Long = 1000L
   @Volatile var thumbnailUrl: String = ""
+  /** The model tags to run (Settings: which classes to detect); null runs both. */
+  @Volatile var models: Set<String>? = null
   @Volatile private var active = true
 
   private var provider: ProcessCameraProvider? = null
+  private var camera: Camera? = null
+
+  /** Digital zoom of the capture (CameraX crops the sensor), so preview and analysed frames stay one picture. */
+  private var zoom = 1f
   private var bound = false
   private var lastRun = 0L
   private var lastGray = 0L
@@ -79,6 +87,20 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
 
   init {
     addView(previewView)
+  }
+
+  /** Main thread (a prop setter). Clamped to the camera's range and [MAX_ZOOM]. */
+  fun setZoom(value: Float) {
+    zoom = value
+    applyZoom()
+  }
+
+  private fun applyZoom() {
+    val cam = camera ?: return
+    val state = cam.cameraInfo.zoomState.value
+    val lo = state?.minZoomRatio ?: 1f
+    val hi = minOf(state?.maxZoomRatio ?: 1f, MAX_ZOOM)
+    cam.cameraControl.setZoomRatio(zoom.coerceIn(lo, maxOf(lo, hi)))
   }
 
   fun setActive(value: Boolean) {
@@ -132,8 +154,12 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
           .build()
         analysis.setAnalyzer(cameraExecutor) { proxy -> analyze(proxy) }
         p.unbindAll()
-        p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+        val cam = p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+        camera = cam
         bound = true
+        applyZoom()
+        val state = cam.cameraInfo.zoomState.value
+        onCameraReady(mapOf("minZoom" to (state?.minZoomRatio ?: 1f).toDouble(), "maxZoom" to minOf(state?.maxZoomRatio ?: 1f, MAX_ZOOM).toDouble()))
       } catch (e: Exception) {
         emitError("CAMERA_BIND", ClikaEngine.noteFor(e))
       }
@@ -144,6 +170,7 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
     if (!bound) return
     try {
       provider?.unbindAll()
+      camera = null
     } catch (e: Exception) {
       Log.w(TAG, "unbind failed: ${e.message}")
     }
@@ -209,7 +236,7 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
         "clikart" -> if (ClikaEngine.isOpen) {
           val rgba = ByteArray(w * h * 4)
           frame.copyPixelsToBuffer(ByteBuffer.wrap(rgba))
-          rows = ClikaEngine.detect(rgba, w, h)
+          rows = ClikaEngine.detect(rgba, w, h, models)
           note = ClikaEngine.timingNote()
           detected = true
         }
@@ -324,5 +351,6 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
   private companion object {
     const val TAG = "FoF"
     const val GRAY_INTERVAL_MS = 100L
+    const val MAX_ZOOM = 10f
   }
 }

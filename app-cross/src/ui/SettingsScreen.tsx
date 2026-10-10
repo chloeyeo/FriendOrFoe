@@ -108,6 +108,13 @@ export function SettingsScreen({ settings, modelDirHints, onSave, onCancel, comp
           <Field label="Detector">
             <Segmented options={detectors} value={draft.detector} onChange={(v) => set('detector', v)} />
           </Field>
+          <Field label="Detect" hint="A class switched off is not drawn, and its model is not run.">
+            <View style={styles.toggles}>
+              <Toggle label="People" value={draft.detectPerson} onChange={(v) => set('detectPerson', v)} />
+              <Toggle label="Drones" value={draft.detectDrone} onChange={(v) => set('detectDrone', v)} />
+              <Toggle label="Birds" value={draft.detectBird} onChange={(v) => set('detectBird', v)} />
+            </View>
+          </Field>
           {draft.detector === 'clikart' ? (
             <>
               <Field label="Drone model directory" hint={`blank = ${modelDirHints.drone}`}>
@@ -214,6 +221,21 @@ function Segmented<T extends string>({ options, value, onChange }: { options: { 
   );
 }
 
+function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <Pressable
+      onPress={() => onChange(!value)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      android_ripple={{ color: 'rgba(210, 214, 219, 0.18)' }}
+      style={[styles.toggle, value && styles.toggleOn]}
+    >
+      <View style={[styles.toggleBox, value && styles.toggleBoxOn]}>{value ? <Text style={styles.toggleCheck}>✓</Text> : null}</View>
+      <Text style={[styles.toggleText, value && styles.toggleTextOn]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function Button({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
   return (
     <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" style={[styles.button, primary && styles.buttonPrimary, disabled && styles.buttonDisabled]}>
@@ -253,5 +275,13 @@ const styles = StyleSheet.create({
   segmentTextOn: { color: colors.ink, fontWeight: '700' },
   segmentTextOff: { opacity: 0.4 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  toggles: { flexDirection: 'row', flexWrap: 'wrap', borderWidth: 1, borderColor: colors.line },
+  toggle: { flexGrow: 1, minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, backgroundColor: colors.surface0 },
+  toggleOn: { backgroundColor: colors.surface2 },
+  toggleBox: { width: 18, height: 18, borderWidth: 1, borderColor: colors.muted, alignItems: 'center', justifyContent: 'center' },
+  toggleBoxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  toggleCheck: { fontFamily: mono, fontSize: 12, fontWeight: '800', color: colors.ink, lineHeight: 14 },
+  toggleText: { fontFamily: mono, fontSize: 13, color: colors.muted },
+  toggleTextOn: { color: colors.text, fontWeight: '700' },
   switchText: { flex: 1, gap: 4 },
 });

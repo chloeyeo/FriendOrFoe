@@ -1,5 +1,5 @@
-import { memo, useMemo, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
+import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent, type NativeTouchEvent } from 'react-native';
 
 import { FofCameraView, type CameraErrorEvent, type CameraFrameEvent, type GrayEvent } from '../../modules/fof-native';
 import type { StatusUi, TrackUi } from '../core/types';
@@ -9,6 +9,8 @@ import { useNow } from './format';
 
 export interface CameraProps {
   detector: 'clikart' | 'http' | 'coreml' | 'none';
+  /** Native model tags to run, from Settings → which classes to detect. */
+  models: string[];
   serveUrl: string;
   intervalMs: number;
   thumbnailUrl: string;
@@ -32,6 +34,18 @@ interface Props {
   overlay?: ReactNode;
   /** Phone-sized: larger tags relative to the view and a bigger tap slop. */
   compact?: boolean;
+  /** The camera zoomed by this factor (new / old), so the session can move its boxes with the picture. */
+  onZoom?: (factor: number) => void;
+  /** When the results panel is closed, a button on the camera opens it again, with the identification count. */
+  panelOpen?: boolean;
+  onOpenPanel?: () => void;
+  resultCount?: number;
+}
+
+const ZOOM_STEP = 1.5;
+
+function spread(touches: NativeTouchEvent[]): number {
+  return Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY);
 }
 
 const clamp = (lo: number, v: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -56,8 +70,35 @@ function objectSummary(tracks: TrackUi[]): string {
  * its evidence line below, and the tap that challenges a drone. Measurements stay off the object, as on the web
  * page; they are in the result details.
  */
-export function ObservationPanel({ tracks, status, camera, onPreviewLayout, onTapDrone, variant = 'panel', overlay, compact = false }: Props) {
+export function ObservationPanel({
+  tracks,
+  status,
+  camera,
+  onPreviewLayout,
+  onTapDrone,
+  variant = 'panel',
+  overlay,
+  compact = false,
+  onZoom,
+  panelOpen = true,
+  onOpenPanel,
+  resultCount = 0,
+}: Props) {
   const immersive = variant === 'immersive';
+  const [zoom, setZoom] = useState(1);
+  const [zoomRange, setZoomRange] = useState({ min: 1, max: 1 });
+  const zoomRef = useRef(1);
+  const gesture = useRef({ pinch: false, moved: false, startSpread: 0, startZoom: 1, x0: 0, y0: 0 });
+
+  /** Digital zoom of the capture (pinch or the +/- buttons); the session moves its boxes by the same factor. */
+  const zoomTo = (target: number) => {
+    const next = clamp(zoomRange.min, target, zoomRange.max);
+    const factor = next / zoomRef.current;
+    if (Math.abs(factor - 1) < 0.005) return;
+    zoomRef.current = next;
+    setZoom(next);
+    onZoom?.(factor);
+  };
   const [size, setSize] = useState({ width: 0, height: 0 });
   const challenging = tracks.some((t) => t.iff.kind === 'CHALLENGED');
   const now = useNow(challenging ? 250 : 1000);
@@ -68,13 +109,53 @@ export function ObservationPanel({ tracks, status, camera, onPreviewLayout, onTa
     onPreviewLayout(width, height);
   };
 
-  const onPress = (e: GestureResponderEvent) => {
+  const point = (e: GestureResponderEvent) => {
     const ne = e.nativeEvent as GestureResponderEvent['nativeEvent'] & { offsetX?: number; offsetY?: number };
-    const x = ne.locationX ?? ne.offsetX ?? 0;
-    const y = ne.locationY ?? ne.offsetY ?? 0;
-    // Inference runs every few seconds on phone A, so the drone may have moved since its box was drawn: be generous.
-    const hit = droneAt(tracks, x, y, compact ? 36 : 24);
-    if (hit) onTapDrone(hit.id);
+    return { x: ne.locationX ?? ne.offsetX ?? 0, y: ne.locationY ?? ne.offsetY ?? 0 };
+  };
+
+  // One responder for both gestures: a still single touch is a tap (challenge the drone under it), two fingers pinch
+  // the camera zoom.
+  const beginPinch = (touches: NativeTouchEvent[]) => {
+    const g = gesture.current;
+    g.pinch = true;
+    g.startSpread = spread(touches);
+    g.startZoom = zoomRef.current;
+  };
+  const responder = {
+    onStartShouldSetResponder: () => true,
+    onMoveShouldSetResponder: () => true,
+    onResponderTerminationRequest: () => false,
+    onResponderGrant: (e: GestureResponderEvent) => {
+      const g = gesture.current;
+      const p = point(e);
+      g.pinch = false;
+      g.moved = false;
+      g.x0 = p.x;
+      g.y0 = p.y;
+      if (camera && e.nativeEvent.touches.length >= 2) beginPinch(e.nativeEvent.touches);
+    },
+    onResponderMove: (e: GestureResponderEvent) => {
+      const g = gesture.current;
+      const touches = e.nativeEvent.touches;
+      if (camera && touches.length >= 2) {
+        if (!g.pinch) beginPinch(touches);
+        if (g.startSpread > 0) zoomTo((g.startZoom * spread(touches)) / g.startSpread);
+        g.moved = true;
+        return;
+      }
+      const p = point(e);
+      if (Math.abs(p.x - g.x0) > 12 || Math.abs(p.y - g.y0) > 12) g.moved = true;
+    },
+    onResponderRelease: () => {
+      const g = gesture.current;
+      if (!g.pinch && !g.moved) {
+        // Inference runs every few seconds on phone A, so the drone may have moved since its box was drawn: be generous.
+        const hit = droneAt(tracks, g.x0, g.y0, compact ? 36 : 24);
+        if (hit) onTapDrone(hit.id);
+      }
+      g.pinch = false;
+    },
   };
 
   const hint = tracks.some((t) => t.cls === 'DRONE' && t.iff.kind === 'UNCHALLENGED') ? ' · tap a drone to identify' : '';
@@ -101,12 +182,15 @@ export function ObservationPanel({ tracks, status, camera, onPreviewLayout, onTa
             serveUrl={camera.serveUrl}
             intervalMs={camera.intervalMs}
             thumbnailUrl={camera.thumbnailUrl}
+            models={camera.models}
+            zoom={zoom}
+            onCameraReady={(e) => setZoomRange({ min: e.nativeEvent.minZoom, max: Math.max(e.nativeEvent.minZoom, e.nativeEvent.maxZoom) })}
             onFrame={(e) => camera.onFrame(e.nativeEvent)}
             onGray={(e) => camera.onGray(e.nativeEvent)}
             onCameraError={(e) => camera.onCameraError(e.nativeEvent)}
           />
         ) : null}
-        <Pressable style={StyleSheet.absoluteFill} onPress={onPress} accessibilityLabel="Observation. Tap a drone ring to identify it.">
+        <View style={StyleSheet.absoluteFill} {...responder} accessible accessibilityLabel="Observation. Tap a drone ring to identify it; pinch to zoom.">
           {drawOrder(tracks).map((t) => (
             <Ring key={t.id} track={t} now={now} viewWidth={size.width} viewHeight={size.height} compact={compact} />
           ))}
@@ -119,11 +203,29 @@ export function ObservationPanel({ tracks, status, camera, onPreviewLayout, onTa
               <Text style={styles.standbyTitle}>Waiting for targets</Text>
             </View>
           ) : null}
-        </Pressable>
+        </View>
         {overlay ? (
           <View style={styles.overlayTop} pointerEvents="none">
             {overlay}
           </View>
+        ) : null}
+        {camera && zoomRange.max > zoomRange.min ? (
+          <View style={styles.zoom}>
+            <Pressable style={styles.zoomButton} onPress={() => zoomTo(zoom * ZOOM_STEP)} accessibilityRole="button" accessibilityLabel="Zoom in">
+              <Text style={styles.zoomGlyph}>+</Text>
+            </Pressable>
+            <Pressable style={styles.zoomButton} onPress={() => zoomTo(zoomRange.min)} accessibilityRole="button" accessibilityLabel={`Zoom ${zoom.toFixed(1)} times. Reset`}>
+              <Text style={styles.zoomLabel}>{zoom.toFixed(1)}×</Text>
+            </Pressable>
+            <Pressable style={styles.zoomButton} onPress={() => zoomTo(zoom / ZOOM_STEP)} accessibilityRole="button" accessibilityLabel="Zoom out">
+              <Text style={styles.zoomGlyph}>−</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {!panelOpen && onOpenPanel ? (
+          <Pressable style={styles.openPanel} onPress={onOpenPanel} accessibilityRole="button" accessibilityLabel="Show results panel">
+            <Text style={styles.openPanelText}>« Results{resultCount ? ` · ${resultCount}` : ''}</Text>
+          </Pressable>
         ) : null}
         <View style={styles.bottom} pointerEvents="none">
           {immersive ? (
@@ -239,4 +341,10 @@ const styles = StyleSheet.create({
   summary: { margin: 8, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: colors.scrim, fontFamily: mono, fontSize: 12, color: colors.text },
   note: { alignSelf: 'stretch', paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.scrim, fontFamily: mono, fontSize: 11, color: colors.muted },
   noteWarn: { color: colors.amber },
+  zoom: { position: 'absolute', right: 8, top: '50%', marginTop: -70, borderWidth: 1, borderColor: colors.line },
+  zoomButton: { width: 48, height: 46, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.scrim },
+  zoomGlyph: { fontFamily: mono, fontSize: 22, color: colors.text },
+  zoomLabel: { fontFamily: mono, fontSize: 12, fontWeight: '700', color: colors.text },
+  openPanel: { position: 'absolute', top: 8, right: 8, minHeight: 40, justifyContent: 'center', paddingHorizontal: 12, backgroundColor: colors.accent },
+  openPanelText: { fontFamily: mono, fontSize: 12, fontWeight: '700', color: colors.ink },
 });

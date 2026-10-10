@@ -30,6 +30,8 @@ export interface RawDetection {
   score: number;
   box: BoxF;
   label?: string;
+  /** The model that produced the row, when the detector runs several (Core ML on iPhone, dual ClikaRT on Android). */
+  model?: string;
 }
 
 /** The IFF state drawn on a drone box (session/ObserverUiState.kt). */

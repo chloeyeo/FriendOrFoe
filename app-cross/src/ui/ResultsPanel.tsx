@@ -24,6 +24,8 @@ interface Props {
   width?: number;
   /** Phone-sized: no heading row, short tab labels. */
   compact?: boolean;
+  /** Hides the panel; the camera then takes the whole width and offers a button to open it again. */
+  onClose?: () => void;
 }
 
 const FAKE_HINT: Record<FakeMode, string> = {
@@ -63,7 +65,12 @@ export function ResultsPanel(props: Props) {
       <View style={styles.filters} accessibilityRole="tablist">
         <FilterButton label={compact ? 'Results' : 'Identifications'} pressed={tab === 'results'} onPress={() => setTab('results')} />
         <FilterButton label={compact ? 'Activity' : 'All activity'} pressed={tab === 'activity'} onPress={() => setTab('activity')} />
-        <FilterButton label="Gadget" pressed={tab === 'gadget'} onPress={() => setTab('gadget')} last />
+        <FilterButton label="Gadget" pressed={tab === 'gadget'} onPress={() => setTab('gadget')} last={!props.onClose} />
+        {props.onClose ? (
+          <Pressable onPress={props.onClose} android_ripple={RIPPLE} accessibilityRole="button" accessibilityLabel="Hide results panel" style={({ pressed }) => [styles.close, pressed && styles.actionDown]}>
+            <Text style={styles.closeText}>»</Text>
+          </Pressable>
+        ) : null}
       </View>
       {tab === 'gadget' ? (
         <GadgetView {...props} now={now} />
@@ -245,6 +252,8 @@ const styles = StyleSheet.create({
   filters: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.line },
   filter: { flex: 1, minHeight: 44, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface1 },
   filterDivider: { borderRightWidth: 1, borderRightColor: colors.line },
+  close: { width: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface1 },
+  closeText: { fontFamily: mono, fontSize: 18, color: colors.text },
   filterOn: { backgroundColor: colors.accent },
   filterText: { fontFamily: mono, fontSize: 12, color: colors.muted },
   filterTextOn: { color: colors.ink, fontWeight: '700' },
