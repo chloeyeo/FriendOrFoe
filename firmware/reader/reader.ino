@@ -1,122 +1,250 @@
-/*
- * reader.ino — the observer-side gadget: USB CDC serial to the phone (newline-delimited JSON, see
- * docs/GADGET_LINK.md), radio challenge-response with the drone-side gadget, FOF-1 verification (fof1 library),
- * and the answer line with verdict, RSSI and response time.
- *
- * SKELETON (stream 2 / Ihan): the serial line protocol is wired; the radio exchange and the crypto are TODO.
- * Until then every challenge answers a status line saying so, never a fake verdict.
- *
- * Libraries: ArduinoJson 7.x, fof1 (firmware/iff), rweather Crypto or ESP32 mbedtls (through fof1).
- * Board/radio: open question #1 in README section 7 — fill docs/GADGET_LINK.md when decided.
+/* 명령 기반 벤치 데모 reader. 부팅/STATUS는 전파를 송신하지 않습니다.
+ * USB: 115200 baud, QUERY <id> / STATUS [id] / HELP / KEY <64 hex>.
+ * BLE 38바이트 규격은 그대로이며, 하나의 질의를 최대 600ms 반복 광고합니다.
  */
-#include <ArduinoJson.h>
-#include <fof1.h>
+#include <FofBoard.h>
+#include <FofEventLog.h>
+#include "config.h"
 
-static const uint32_t SERIAL_BAUD = 115200;
-static const char* FW_VERSION = "0.1.0-skeleton";
+fof::KeyStore keys;
+fof::Radio radio;
+bool ready = false;
+enum class ReaderMode { Idle, Querying, Cooldown };
+ReaderMode mode = ReaderMode::Idle;
+bool pending = false, haveStarted = false, responseReceived = false;
+uint8_t currentNonce[fof::kNonceSize] = {};
+uint32_t queryStartedAt = 0, queryNumber = 0, responseMs = 0;
+fof::Reason observedReason = fof::Reason::NoResponse;
+char currentId[33] = {}, bootId[17] = {};
 
-static char lineBuf[256];
-static size_t lineLen = 0;
-
-// TODO(stream 2): the pre-placed 32-byte master key from NVS/EEPROM; the TEST key below matches eval/gen_vectors.py
-// and must never ship.
-static const uint8_t MASTER_KEY[FOF1_KEY_LEN] = {
-  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-};
-
-static fof1_nonce_ledger ledger;
-
-static void sendStatus(const char* mode) {
-  JsonDocument doc;
-  doc["type"] = "status";
-  doc["fw"] = FW_VERSION;
-  doc["battery"] = 3.9;          // TODO(stream 2): read the battery ADC
-  doc["mode"] = mode;
-  serializeJson(doc, Serial);
-  Serial.println();
+// USB가 느려도 RF/응답 기한를 멈추지 않습니다. 제어 큐가 차면 입력 처리를 잠시
+// 멈춰 완료 판정을 위한 여유를 확보합니다. 진단 큐만 손실을 허용합니다.
+fof::Lines<16, 768> controls;
+fof::Lines<8, 640> diagnostics;
+uint32_t droppedPacketLogs = 0;
+void flushLogs() {
+  // 이미 일부 출력한 JSON 줄은 끝낸 뒤 우선순위를 전환합니다.
+  if (diagnostics.offset) diagnostics.drain();
+  else if (controls.count) controls.drain();
+  else if (droppedPacketLogs) {
+    char line[96];
+    snprintf(line, sizeof(line), "{\"event\":\"DIAG\",\"dropped_packet_logs\":%lu}\n",
+             static_cast<unsigned long>(droppedPacketLogs));
+    if (controls.push(line)) droppedPacketLogs = 0;
+  } else diagnostics.drain();
 }
-
-static void sendAnswer(fof1_verdict verdict, const char* droneId, const uint8_t nonce[FOF1_NONCE_LEN],
-                       int rssiDbm, bool hasRssi, uint32_t responseMs) {
-  JsonDocument doc;
-  doc["type"] = "answer";
-  doc["verdict"] = fof1_verdict_word(verdict);
-  const char* reason = fof1_verdict_reason(verdict);
-  if (reason) doc["reason"] = reason; else doc["reason"] = (const char*)NULL;
-  if (droneId) doc["droneId"] = droneId;
-  char hex[FOF1_NONCE_LEN * 2 + 1];
-  for (int i = 0; i < FOF1_NONCE_LEN; i++) {
-    static const char digits[] = "0123456789abcdef";
-    hex[2 * i] = digits[nonce[i] >> 4];
-    hex[2 * i + 1] = digits[nonce[i] & 0x0f];
+bool commandCapacity() { return controls.count <= 9 && !controls.offset && !diagnostics.offset; }
+const char* modeName() {
+  if (mode == ReaderMode::Idle) return "IDLE";
+  return mode == ReaderMode::Querying ? "QUERYING" : "COOLDOWN";
+}
+void bytesToHex(const uint8_t* bytes, size_t length, char* out) {
+  constexpr char digits[] = "0123456789abcdef";
+  for (size_t i = 0; i < length; ++i) {
+    out[i * 2] = digits[bytes[i] >> 4]; out[i * 2 + 1] = digits[bytes[i] & 15];
   }
-  hex[FOF1_NONCE_LEN * 2] = '\0';
-  doc["nonce"] = hex;
-  if (hasRssi) doc["rssiDbm"] = rssiDbm;
-  doc["responseMs"] = responseMs;
-  serializeJson(doc, Serial);
-  Serial.println();
+  out[length * 2] = 0;
 }
-
-static void handleChallenge(int boxId, uint16_t challengerId, uint32_t t) {
-  (void)boxId;
-  // TODO(stream 2):
-  //   1. nonce[16] from the hardware RNG (esp_random() / board RNG); fof1_ledger_issue(&ledger, nonce, t)
-  //   2. day_key = fof1_derive_day_key(MASTER_KEY, fof1_day_of(t)); fof1_build_challenge(day_key, nonce, t, challengerId, wire)
-  //   3. radio.send(wire, 31); t0 = millis(); wait up to 10 s for a 37-byte reply, note RSSI
-  //   4. verdict = fof1_verify_response(day_key, &ledger, &ch, reply or NULL, millis() - t0, &observerPos, heading, now, &resp)
-  //   5. sendAnswer(verdict, "RQ-xx" from resp.drone_id, nonce, rssi, true, millis() - t0)
-  (void)challengerId; (void)t;
-  sendStatus("NOT_IMPLEMENTED");  // honest placeholder: the phone shows it in the event log, never as a verdict
-}
-
-static void handleLine(const char* line) {
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, line);
-  if (err) {
-    JsonDocument out;
-    out["type"] = "error";
-    out["text"] = err.c_str();
-    serializeJson(out, Serial);
-    Serial.println();
-    return;
+struct Completed {
+  bool valid = false, received = false;
+  char id[33] = {};
+  uint32_t query = 0, elapsedMs = 0;
+  fof::Reason reason = fof::Reason::NoResponse;
+  void json(char* out, size_t size, bool replay = false) const {
+    if (!valid) { snprintf(out, size, "null"); return; }
+    snprintf(out, size,
+      "{\"event\":\"RESULT\",\"request_id\":\"%s\",\"query\":%lu,"
+      "\"response_received\":%s,\"verdict\":\"%s\",\"reason\":\"%s\","
+      "\"response_ms\":%s,\"elapsed_ms\":%lu,\"replay\":%s}",
+      id, static_cast<unsigned long>(query), received ? "true" : "false",
+      reason == fof::Reason::None ? "FRIEND" : "UNKNOWN", fof::reasonName(reason),
+      responseText(), static_cast<unsigned long>(elapsedMs), replay ? "true" : "false");
   }
-  const char* cmd = doc["cmd"] | "";
-  if (strcmp(cmd, "challenge") == 0) {
-    handleChallenge(doc["boxId"] | 0, (uint16_t)(doc["challengerId"] | 0), (uint32_t)(doc["t"] | 0UL));
-  } else if (strcmp(cmd, "status") == 0) {
-    sendStatus("HONEST");  // TODO(stream 2): the reader has no attack modes; report link/radio state instead
-  } else {
-    JsonDocument out;
-    out["type"] = "error";
-    out["text"] = "unknown cmd";
-    serializeJson(out, Serial);
-    Serial.println();
+  const char* responseText() const {
+    static char value[16];
+    if (!received) return "null";
+    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(responseMs));
+    return value;
+  }
+  uint32_t responseMs = 0;
+} lastResult;
+void emitResult(bool replay = false) {
+  char line[512]; lastResult.json(line, sizeof(line) - 2, replay); strcat(line, "\n"); controls.push(line);
+}
+void stateEvent(const char* reason = "CHANGED") {
+  char line[256];
+  snprintf(line, sizeof(line),
+    "{\"event\":\"STATE\",\"boot_id\":\"%s\",\"request_id\":\"%s\",\"state\":\"%s\",\"reason\":\"%s\"}\n",
+    bootId, currentId, modeName(), reason); controls.push(line);
+}
+void ack(const char* id, bool accepted, const char* reason) {
+  char line[256];
+  snprintf(line, sizeof(line),
+    "{\"event\":\"ACK\",\"request_id\":\"%s\",\"accepted\":%s,\"reason\":\"%s\",\"state\":\"%s\"}\n",
+    id, accepted ? "true" : "false", reason, modeName()); controls.push(line);
+}
+void status(const char* id) {
+  char result[400], line[768]; lastResult.json(result, sizeof(result), true);
+  snprintf(line, sizeof(line),
+    "{\"event\":\"STATUS\",\"request_id\":\"%s\",\"role\":\"reader\",\"interface_version\":2,"
+    "\"boot_id\":\"%s\",\"manual_query\":true,\"response_timeout_ms\":%lu,\"key_configured\":%s,\"radio_ready\":%s,"
+    "\"state\":\"%s\",\"active_request_id\":\"%s\",\"last_result\":%s}\n",
+    id, bootId, static_cast<unsigned long>(RESPONSE_TIMEOUT_MS),
+    keys.ready ? "true" : "false", ready ? "true" : "false", modeName(),
+    mode != ReaderMode::Idle ? currentId : "", result); controls.push(line);
+}
+void logPacket(const char* event, const uint8_t* bytes, int length, uint32_t at, const char* result) {
+  char raw[77], nonce[33] = {}, tag[33] = {}, fields[240] = {}, line[640];
+  const size_t captured = length < 0 ? 0 : length > 38 ? 38 : length;
+  bytesToHex(bytes, captured, raw);
+  if (length == 38) {
+    bytesToHex(bytes + fof::kNonceOffset, fof::kNonceSize, nonce);
+    bytesToHex(bytes + fof::kBodySize, fof::kTagSize, tag);
+    snprintf(fields, sizeof(fields),
+      ",\"version\":%u,\"type\":%u,\"reader_id\":%u,\"drone_id\":%u,\"nonce\":\"%s\",\"tag\":\"%s\"",
+      bytes[0], bytes[1], fof::readU16(bytes + 2), fof::readU16(bytes + 4), nonce, tag);
+  }
+  snprintf(line, sizeof(line),
+    "{\"event\":\"%s\",\"request_id\":\"%s\",\"query\":%lu,\"at_ms\":%lu,\"elapsed_ms\":%lu,"
+    "\"bytes\":%d%s,\"raw\":\"%s\",\"result\":\"%s\"}\n", event, currentId,
+    static_cast<unsigned long>(queryNumber), static_cast<unsigned long>(at),
+    static_cast<unsigned long>(haveStarted ? fof::elapsed(at, queryStartedAt) : 0), length, fields, raw, result);
+  if (!diagnostics.push(line)) ++droppedPacketLogs;
+}
+void rememberReason(fof::Reason reason) {
+  if (reason == fof::Reason::RadioError ||
+      (reason == fof::Reason::AuthFailed && observedReason != fof::Reason::RadioError) ||
+      (reason == fof::Reason::InvalidMessage && observedReason == fof::Reason::NoResponse)) observedReason = reason;
+}
+void finish(fof::Reason reason, uint32_t at) {
+  if (!pending) return; // nonce 하나당 최종 판정은 한 번만 확정합니다.
+  radio.stopTransmit(); pending = false;
+  lastResult.valid = true; strcpy(lastResult.id, currentId);
+  lastResult.query = queryNumber; lastResult.received = responseReceived;
+  lastResult.reason = reason; lastResult.elapsedMs = fof::elapsed(at, queryStartedAt);
+  lastResult.responseMs = responseMs;
+  emitResult();
+  // 결과는 즉시 알리되, 다음 질의는 질의 시작부터 3초가 지난 뒤 허용합니다.
+  // 수신 시각과 루프 처리 시각이 다를 수 있으므로 잠금 해제는 현재 시각 기준입니다.
+  mode = fof::elapsed(millis(), queryStartedAt) >= MIN_QUERY_INTERVAL_MS
+      ? ReaderMode::Idle : ReaderMode::Cooldown;
+  stateEvent();
+}
+void releaseCooldown() {
+  if (mode == ReaderMode::Cooldown && fof::elapsed(millis(), queryStartedAt) >= MIN_QUERY_INTERVAL_MS) {
+    mode = ReaderMode::Idle;
+    stateEvent();
   }
 }
-
+void beginChallenge(const char* id) {
+  strcpy(currentId, id); ++queryNumber; haveStarted = true;
+  fof::fillRandom(currentNonce, sizeof(currentNonce));
+  queryStartedAt = millis(); pending = true; responseReceived = false; responseMs = 0;
+  observedReason = fof::Reason::NoResponse; mode = ReaderMode::Querying;
+  ack(id, true, "ACCEPTED"); stateEvent();
+  uint8_t packet[fof::kPacketSize] = {};
+  if (!fof::makePacket(fof::kChallenge, READER_ID, DRONE_ID, currentNonce, keys.key, packet)) {
+    finish(fof::Reason::RadioError, millis()); return;
+  }
+  const int result = radio.send(packet);
+  logPacket("TX_CHALLENGE", packet, sizeof(packet), queryStartedAt,
+            result == fof::kSendOk ? "BROADCAST_STARTED" : "RADIO_ERROR");
+  if (result != fof::kSendOk) finish(fof::Reason::RadioError, millis());
+}
+bool validId(const char* id) {
+  const size_t n = strlen(id);
+  if (n < 1 || n > 32) return false;
+  for (size_t i = 0; i < n; ++i) {
+    const char c = id[i];
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
+  }
+  return true;
+}
+bool command(const char* line) {
+  if (!line) { ack("", false, "COMMAND_TOO_LONG"); return true; }
+  if (!strcmp(line, "STATUS")) { status(""); return true; }
+  if (!strncmp(line, "STATUS ", 7)) {
+    if (validId(line + 7)) status(line + 7); else ack("", false, "INVALID_REQUEST_ID");
+    return true;
+  }
+  if (!strcmp(line, "HELP")) {
+    controls.push("{\"event\":\"HELP\",\"commands\":[\"QUERY <request_id>\",\"STATUS [request_id]\",\"HELP\",\"KEY <64 hex digits>\"]}\n"); return true;
+  }
+  if (!strncmp(line, "KEY ", 4)) {
+    if (mode != ReaderMode::Idle) { ack("", false, "BUSY"); return true; }
+    return false; // 기존 KeyStore만 키를 읽고 저장합니다. 절대 키를 로그에 복사하지 않습니다.
+  }
+  if (strncmp(line, "QUERY ", 6)) { ack("", false, "INVALID_COMMAND"); return true; }
+  const char* id = line + 6;
+  if (!validId(id)) { ack("", false, "INVALID_REQUEST_ID"); return true; }
+  if ((haveStarted && !strcmp(id, currentId)) || (lastResult.valid && !strcmp(id, lastResult.id))) {
+    ack(id, true, "DUPLICATE"); stateEvent();
+    if (lastResult.valid && !strcmp(id, lastResult.id)) emitResult(true);
+  } else if (mode != ReaderMode::Idle) ack(id, false, "BUSY");
+  else if (!keys.ready) ack(id, false, "KEY_NOT_CONFIGURED");
+  else if (!ready) ack(id, false, "RADIO_ERROR");
+  else beginChallenge(id);
+  return true;
+}
+void acceptResponse(const fof::ReceivedPacket& packet) {
+  if (!pending || mode != ReaderMode::Querying) {
+    const bool late = haveStarted && packet.length == 38 &&
+      fof::equalBytes(packet.bytes + fof::kNonceOffset, currentNonce, fof::kNonceSize) &&
+      fof::elapsed(packet.arrivedAt, queryStartedAt) >= RESPONSE_TIMEOUT_MS;
+    logPacket("RX_RESPONSE", packet.bytes, packet.length, packet.arrivedAt,
+              late ? "IGNORED_LATE_RESPONSE" : "IGNORED_NOT_WAITING"); return;
+  }
+  if (fof::elapsed(packet.arrivedAt, queryStartedAt) >= RESPONSE_TIMEOUT_MS) {
+    logPacket("RX_RESPONSE", packet.bytes, packet.length, packet.arrivedAt, "IGNORED_LATE_RESPONSE"); return;
+  }
+  if (packet.length != 38) {
+    logPacket("RX_RESPONSE", packet.bytes, packet.length, packet.arrivedAt, "INVALID_MESSAGE");
+    rememberReason(fof::Reason::InvalidMessage); return;
+  }
+  if (!fof::equalBytes(packet.bytes + fof::kNonceOffset, currentNonce, fof::kNonceSize)) {
+    logPacket("RX_RESPONSE", packet.bytes, packet.length, packet.arrivedAt, "IGNORED_NONCE_MISMATCH"); return;
+  }
+  // 수신 여부와 인증 성공은 별개입니다. 현재 nonce 응답만 수신으로 집계합니다.
+  responseReceived = true; responseMs = fof::elapsed(packet.arrivedAt, queryStartedAt);
+  const auto reason = fof::verifyPacket(packet.bytes, packet.length, fof::kResponse, READER_ID, DRONE_ID, keys.key);
+  logPacket("RX_RESPONSE", packet.bytes, packet.length, packet.arrivedAt,
+            reason == fof::Reason::None ? "FRIEND" : fof::reasonName(reason));
+  if (reason == fof::Reason::None) finish(reason, packet.arrivedAt);
+  else rememberReason(reason);
+}
 void setup() {
-  Serial.begin(SERIAL_BAUD);
-  fof1_ledger_init(&ledger);
-  // TODO(stream 2): radio.begin(); load MASTER_KEY from NVS; load the configured observer position/heading.
-  sendStatus("HONEST");
+  Serial.begin(115200); // GPIO8 LED를 제어하지 않습니다.
+#if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+#if ARDUINO_USB_MODE == 1
+  Serial.setTxBufferSize(2048);
+#endif
+  Serial.setTxTimeoutMs(0);
+#endif
+  delay(1000);
+  keys.begin(); ready = radio.begin(fof::kResponse);
+  uint8_t randomBoot[8]; fof::fillRandom(randomBoot, sizeof(randomBoot)); bytesToHex(randomBoot, 8, bootId);
+  stateEvent("BOOT"); status(""); // 수신 대기만 시작합니다. 질의는 QUERY에서만 시작합니다.
 }
-
 void loop() {
-  while (Serial.available() > 0) {
-    char c = (char)Serial.read();
-    if (c == '\n' || c == '\r') {
-      if (lineLen > 0) {
-        lineBuf[lineLen] = '\0';
-        handleLine(lineBuf);
-        lineLen = 0;
-      }
-    } else if (lineLen < sizeof(lineBuf) - 1) {
-      lineBuf[lineLen++] = c;
-    } else {
-      lineLen = 0;  // overlong line: drop it
+  releaseCooldown(); // 3초 경계에서 도착한 명령도 새 질의로 수락할 수 있습니다.
+  flushLogs(); keys.poll(command, commandCapacity);
+  if (ready) {
+    radio.poll();
+    fof::ReceivedPacket packet;
+    for (int i = 0; i < 16 && radio.receive(packet); ++i) acceptResponse(packet);
+    const bool radioError = radio.takeRadioError();
+    const bool overflow = radio.takeQueueOverflow();
+    if (radioError || overflow) {
+      char line[128];
+      snprintf(line, sizeof(line), "{\"event\":\"DIAG\",\"role\":\"reader\",\"radio_error\":%s,\"receive_queue_overflow\":%s}\n",
+               radioError ? "true" : "false", overflow ? "true" : "false");
+      if (!diagnostics.push(line)) ++droppedPacketLogs;
+      if (pending) rememberReason(fof::Reason::RadioError);
     }
   }
-  // TODO(stream 2): service the radio here (non-blocking) so a late reply can still be timed.
+  const uint32_t now = millis();
+  if (pending && fof::elapsed(now, queryStartedAt) >= RESPONSE_TIMEOUT_MS) finish(observedReason, now);
+  releaseCooldown();
+  flushLogs(); delay(1);
 }

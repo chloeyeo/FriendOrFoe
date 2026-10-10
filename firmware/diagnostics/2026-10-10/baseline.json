@@ -1,0 +1,1100 @@
+[
+  {
+    "trial": 1,
+    "request_id": "2f3bbff70e654663a1c7ecc725b4c1fc",
+    "result": {
+      "event": "RESULT",
+      "request_id": "2f3bbff70e654663a1c7ecc725b4c1fc",
+      "query": 1,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "2f3bbff70e654663a1c7ecc725b4c1fc",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "2f3bbff70e654663a1c7ecc725b4c1fc",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "2f3bbff70e654663a1c7ecc725b4c1fc",
+        "query": 1,
+        "at_ms": 1112,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "c45efe0edcd984f4dd1a3f7df0ac7ef8",
+        "tag": "b2e57e1c746a0bf09a268926bd01044b",
+        "raw": "010100010001c45efe0edcd984f4dd1a3f7df0ac7ef8b2e57e1c746a0bf09a268926bd01044b",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "2f3bbff70e654663a1c7ecc725b4c1fc",
+        "query": 1,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "2f3bbff70e654663a1c7ecc725b4c1fc",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 2,
+    "request_id": "5830826fe00c4939b7a22ec0ce2dad43",
+    "result": {
+      "event": "RESULT",
+      "request_id": "5830826fe00c4939b7a22ec0ce2dad43",
+      "query": 2,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "5830826fe00c4939b7a22ec0ce2dad43",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "5830826fe00c4939b7a22ec0ce2dad43",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "5830826fe00c4939b7a22ec0ce2dad43",
+        "query": 2,
+        "at_ms": 4397,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "8b2648d689d29c0182a78468d001cddf",
+        "tag": "9140ccfbfa546666e9adb51e7f5a45cf",
+        "raw": "0101000100018b2648d689d29c0182a78468d001cddf9140ccfbfa546666e9adb51e7f5a45cf",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "5830826fe00c4939b7a22ec0ce2dad43",
+        "query": 2,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "5830826fe00c4939b7a22ec0ce2dad43",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 3,
+    "request_id": "267ffedba1874c72ab7055416f54acfb",
+    "result": {
+      "event": "RESULT",
+      "request_id": "267ffedba1874c72ab7055416f54acfb",
+      "query": 3,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "267ffedba1874c72ab7055416f54acfb",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "267ffedba1874c72ab7055416f54acfb",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "267ffedba1874c72ab7055416f54acfb",
+        "query": 3,
+        "at_ms": 7684,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "61b34459e28ec2a69f6218f1a7c3cea9",
+        "tag": "337f0534a6475ae12ad9822b2e097212",
+        "raw": "01010001000161b34459e28ec2a69f6218f1a7c3cea9337f0534a6475ae12ad9822b2e097212",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "267ffedba1874c72ab7055416f54acfb",
+        "query": 3,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "267ffedba1874c72ab7055416f54acfb",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 4,
+    "request_id": "d8663d79be7d48e18f7e90a4a09d3537",
+    "result": {
+      "event": "RESULT",
+      "request_id": "d8663d79be7d48e18f7e90a4a09d3537",
+      "query": 4,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "d8663d79be7d48e18f7e90a4a09d3537",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "d8663d79be7d48e18f7e90a4a09d3537",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "d8663d79be7d48e18f7e90a4a09d3537",
+        "query": 4,
+        "at_ms": 10971,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "eda435e63d53487afc3767787c110a5c",
+        "tag": "2ebbfba2aa88201634b51e4624da982f",
+        "raw": "010100010001eda435e63d53487afc3767787c110a5c2ebbfba2aa88201634b51e4624da982f",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "d8663d79be7d48e18f7e90a4a09d3537",
+        "query": 4,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "d8663d79be7d48e18f7e90a4a09d3537",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 5,
+    "request_id": "a90671716abb4e5393370f8b3d7c0217",
+    "result": {
+      "event": "RESULT",
+      "request_id": "a90671716abb4e5393370f8b3d7c0217",
+      "query": 5,
+      "response_received": true,
+      "verdict": "FRIEND",
+      "reason": "NONE",
+      "response_ms": 80,
+      "elapsed_ms": 80,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "query": 5,
+        "at_ms": 14291,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "05c04b59417895636344d2288b99f51f",
+        "tag": "c120e6fff51bfda7a6c128b5cbaaa675",
+        "raw": "01010001000105c04b59417895636344d2288b99f51fc120e6fff51bfda7a6c128b5cbaaa675",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "drone",
+        "event": "RX_CHALLENGE",
+        "role": "drone",
+        "at_ms": 255644,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "05c04b59417895636344d2288b99f51f",
+        "tag": "c120e6fff51bfda7a6c128b5cbaaa675",
+        "raw": "01010001000105c04b59417895636344d2288b99f51fc120e6fff51bfda7a6c128b5cbaaa675",
+        "result": "AUTHENTICATED"
+      },
+      {
+        "source": "drone",
+        "event": "TX_RESPONSE",
+        "role": "drone",
+        "at_ms": 255645,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "05c04b59417895636344d2288b99f51f",
+        "tag": "3cf5dfe60b9434ac8b0be50f523851c4",
+        "raw": "01020001000105c04b59417895636344d2288b99f51f3cf5dfe60b9434ac8b0be50f523851c4",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "query": 5,
+        "response_received": true,
+        "verdict": "FRIEND",
+        "reason": "NONE",
+        "response_ms": 80,
+        "elapsed_ms": 80,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "state": "COOLDOWN",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "RX_RESPONSE",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "query": 5,
+        "at_ms": 14371,
+        "elapsed_ms": 80,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "05c04b59417895636344d2288b99f51f",
+        "tag": "3cf5dfe60b9434ac8b0be50f523851c4",
+        "raw": "01020001000105c04b59417895636344d2288b99f51f3cf5dfe60b9434ac8b0be50f523851c4",
+        "result": "FRIEND"
+      },
+      {
+        "source": "reader",
+        "event": "RX_RESPONSE",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "query": 5,
+        "at_ms": 14431,
+        "elapsed_ms": 140,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "05c04b59417895636344d2288b99f51f",
+        "tag": "3cf5dfe60b9434ac8b0be50f523851c4",
+        "raw": "01020001000105c04b59417895636344d2288b99f51f3cf5dfe60b9434ac8b0be50f523851c4",
+        "result": "IGNORED_NOT_WAITING"
+      },
+      {
+        "source": "reader",
+        "event": "RX_RESPONSE",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "query": 5,
+        "at_ms": 14854,
+        "elapsed_ms": 563,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "05c04b59417895636344d2288b99f51f",
+        "tag": "3cf5dfe60b9434ac8b0be50f523851c4",
+        "raw": "01020001000105c04b59417895636344d2288b99f51f3cf5dfe60b9434ac8b0be50f523851c4",
+        "result": "IGNORED_NOT_WAITING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "a90671716abb4e5393370f8b3d7c0217",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 6,
+    "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+    "result": {
+      "event": "RESULT",
+      "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+      "query": 6,
+      "response_received": true,
+      "verdict": "FRIEND",
+      "reason": "NONE",
+      "response_ms": 395,
+      "elapsed_ms": 395,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+        "query": 6,
+        "at_ms": 17671,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "ccc6af4eeb8eb8c7b09f9dee382fa448",
+        "tag": "0c7cd0ec9fafeaf8dcd93f37bf72d3d3",
+        "raw": "010100010001ccc6af4eeb8eb8c7b09f9dee382fa4480c7cd0ec9fafeaf8dcd93f37bf72d3d3",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "drone",
+        "event": "RX_CHALLENGE",
+        "role": "drone",
+        "at_ms": 258964,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "ccc6af4eeb8eb8c7b09f9dee382fa448",
+        "tag": "0c7cd0ec9fafeaf8dcd93f37bf72d3d3",
+        "raw": "010100010001ccc6af4eeb8eb8c7b09f9dee382fa4480c7cd0ec9fafeaf8dcd93f37bf72d3d3",
+        "result": "AUTHENTICATED"
+      },
+      {
+        "source": "drone",
+        "event": "TX_RESPONSE",
+        "role": "drone",
+        "at_ms": 258965,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "ccc6af4eeb8eb8c7b09f9dee382fa448",
+        "tag": "70581ddcb34cccfc3c94f1bb8f42e0cb",
+        "raw": "010200010001ccc6af4eeb8eb8c7b09f9dee382fa44870581ddcb34cccfc3c94f1bb8f42e0cb",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "drone",
+        "event": "RX_CHALLENGE",
+        "role": "drone",
+        "at_ms": 259078,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "ccc6af4eeb8eb8c7b09f9dee382fa448",
+        "tag": "0c7cd0ec9fafeaf8dcd93f37bf72d3d3",
+        "raw": "010100010001ccc6af4eeb8eb8c7b09f9dee382fa4480c7cd0ec9fafeaf8dcd93f37bf72d3d3",
+        "result": "AUTHENTICATED_DUPLICATE"
+      },
+      {
+        "source": "drone",
+        "event": "TX_RESPONSE",
+        "role": "drone",
+        "at_ms": 259078,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "ccc6af4eeb8eb8c7b09f9dee382fa448",
+        "tag": "70581ddcb34cccfc3c94f1bb8f42e0cb",
+        "raw": "010200010001ccc6af4eeb8eb8c7b09f9dee382fa44870581ddcb34cccfc3c94f1bb8f42e0cb",
+        "result": "ALREADY_ADVERTISING"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+        "query": 6,
+        "response_received": true,
+        "verdict": "FRIEND",
+        "reason": "NONE",
+        "response_ms": 395,
+        "elapsed_ms": 395,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+        "state": "COOLDOWN",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "RX_RESPONSE",
+        "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+        "query": 6,
+        "at_ms": 18066,
+        "elapsed_ms": 395,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "ccc6af4eeb8eb8c7b09f9dee382fa448",
+        "tag": "70581ddcb34cccfc3c94f1bb8f42e0cb",
+        "raw": "010200010001ccc6af4eeb8eb8c7b09f9dee382fa44870581ddcb34cccfc3c94f1bb8f42e0cb",
+        "result": "FRIEND"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "990b8f5e4a074a26bf89f5c3b146eb05",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 7,
+    "request_id": "0d2456e7b7d147898621358fc0dbc8cb",
+    "result": {
+      "event": "RESULT",
+      "request_id": "0d2456e7b7d147898621358fc0dbc8cb",
+      "query": 7,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "0d2456e7b7d147898621358fc0dbc8cb",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "0d2456e7b7d147898621358fc0dbc8cb",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "0d2456e7b7d147898621358fc0dbc8cb",
+        "query": 7,
+        "at_ms": 21036,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "e6a65ae9adc2dbfe9cc07b36d105b39c",
+        "tag": "38d71e98fa8a20389dd482e98b608c9d",
+        "raw": "010100010001e6a65ae9adc2dbfe9cc07b36d105b39c38d71e98fa8a20389dd482e98b608c9d",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "0d2456e7b7d147898621358fc0dbc8cb",
+        "query": 7,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "0d2456e7b7d147898621358fc0dbc8cb",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 8,
+    "request_id": "85cfc8ff25b14c838737936d136356c2",
+    "result": {
+      "event": "RESULT",
+      "request_id": "85cfc8ff25b14c838737936d136356c2",
+      "query": 8,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "85cfc8ff25b14c838737936d136356c2",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "85cfc8ff25b14c838737936d136356c2",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "85cfc8ff25b14c838737936d136356c2",
+        "query": 8,
+        "at_ms": 24322,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "145bdf89d28a24cfd050bcde8d65e543",
+        "tag": "b76f2f123aa90dfe5c673ddac81fc746",
+        "raw": "010100010001145bdf89d28a24cfd050bcde8d65e543b76f2f123aa90dfe5c673ddac81fc746",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "85cfc8ff25b14c838737936d136356c2",
+        "query": 8,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "85cfc8ff25b14c838737936d136356c2",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 9,
+    "request_id": "af3cd121589540fc879cfc048a5b4d19",
+    "result": {
+      "event": "RESULT",
+      "request_id": "af3cd121589540fc879cfc048a5b4d19",
+      "query": 9,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "af3cd121589540fc879cfc048a5b4d19",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "af3cd121589540fc879cfc048a5b4d19",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "af3cd121589540fc879cfc048a5b4d19",
+        "query": 9,
+        "at_ms": 27615,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "ff392261da562dacafd5a946b7f19f72",
+        "tag": "23e5f6cdad3df5b641c3f0f4914ffe79",
+        "raw": "010100010001ff392261da562dacafd5a946b7f19f7223e5f6cdad3df5b641c3f0f4914ffe79",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "af3cd121589540fc879cfc048a5b4d19",
+        "query": 9,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "af3cd121589540fc879cfc048a5b4d19",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 10,
+    "request_id": "28072d0be8754c0ababec4eb4cb85709",
+    "result": {
+      "event": "RESULT",
+      "request_id": "28072d0be8754c0ababec4eb4cb85709",
+      "query": 10,
+      "response_received": true,
+      "verdict": "FRIEND",
+      "reason": "NONE",
+      "response_ms": 184,
+      "elapsed_ms": 184,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "28072d0be8754c0ababec4eb4cb85709",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "28072d0be8754c0ababec4eb4cb85709",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "28072d0be8754c0ababec4eb4cb85709",
+        "query": 10,
+        "at_ms": 30956,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "0802a4fbd393a148a3dd42a174f88346",
+        "tag": "cfd4d86ee0a0b2136f737f421ba74499",
+        "raw": "0101000100010802a4fbd393a148a3dd42a174f88346cfd4d86ee0a0b2136f737f421ba74499",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "drone",
+        "event": "RX_CHALLENGE",
+        "role": "drone",
+        "at_ms": 272299,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "0802a4fbd393a148a3dd42a174f88346",
+        "tag": "cfd4d86ee0a0b2136f737f421ba74499",
+        "raw": "0101000100010802a4fbd393a148a3dd42a174f88346cfd4d86ee0a0b2136f737f421ba74499",
+        "result": "AUTHENTICATED"
+      },
+      {
+        "source": "drone",
+        "event": "TX_RESPONSE",
+        "role": "drone",
+        "at_ms": 272300,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "0802a4fbd393a148a3dd42a174f88346",
+        "tag": "13069b13ba4572cb6f1224717646b38e",
+        "raw": "0102000100010802a4fbd393a148a3dd42a174f8834613069b13ba4572cb6f1224717646b38e",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "28072d0be8754c0ababec4eb4cb85709",
+        "query": 10,
+        "response_received": true,
+        "verdict": "FRIEND",
+        "reason": "NONE",
+        "response_ms": 184,
+        "elapsed_ms": 184,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "28072d0be8754c0ababec4eb4cb85709",
+        "state": "COOLDOWN",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "RX_RESPONSE",
+        "request_id": "28072d0be8754c0ababec4eb4cb85709",
+        "query": 10,
+        "at_ms": 31140,
+        "elapsed_ms": 184,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "0802a4fbd393a148a3dd42a174f88346",
+        "tag": "13069b13ba4572cb6f1224717646b38e",
+        "raw": "0102000100010802a4fbd393a148a3dd42a174f8834613069b13ba4572cb6f1224717646b38e",
+        "result": "FRIEND"
+      },
+      {
+        "source": "reader",
+        "event": "RX_RESPONSE",
+        "request_id": "28072d0be8754c0ababec4eb4cb85709",
+        "query": 10,
+        "at_ms": 31583,
+        "elapsed_ms": 627,
+        "bytes": 38,
+        "version": 1,
+        "type": 2,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "0802a4fbd393a148a3dd42a174f88346",
+        "tag": "13069b13ba4572cb6f1224717646b38e",
+        "raw": "0102000100010802a4fbd393a148a3dd42a174f8834613069b13ba4572cb6f1224717646b38e",
+        "result": "IGNORED_NOT_WAITING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "28072d0be8754c0ababec4eb4cb85709",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 11,
+    "request_id": "2818f61f0875407cb55e4c83e294f5d2",
+    "result": {
+      "event": "RESULT",
+      "request_id": "2818f61f0875407cb55e4c83e294f5d2",
+      "query": 11,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "2818f61f0875407cb55e4c83e294f5d2",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "2818f61f0875407cb55e4c83e294f5d2",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "2818f61f0875407cb55e4c83e294f5d2",
+        "query": 11,
+        "at_ms": 34232,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "89397944ce7d79f4287b72885e8cd984",
+        "tag": "42c3b39162c1a7f6bb1abb78488790ad",
+        "raw": "01010001000189397944ce7d79f4287b72885e8cd98442c3b39162c1a7f6bb1abb78488790ad",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "2818f61f0875407cb55e4c83e294f5d2",
+        "query": 11,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "2818f61f0875407cb55e4c83e294f5d2",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  },
+  {
+    "trial": 12,
+    "request_id": "dc036ec0263745d9b7ab8a0c5da5ff4b",
+    "result": {
+      "event": "RESULT",
+      "request_id": "dc036ec0263745d9b7ab8a0c5da5ff4b",
+      "query": 12,
+      "response_received": false,
+      "verdict": "UNKNOWN",
+      "reason": "NO_RESPONSE",
+      "response_ms": null,
+      "elapsed_ms": 3000,
+      "replay": false,
+      "category": "RADIO_RESULT"
+    },
+    "events": [
+      {
+        "source": "reader",
+        "event": "ACK",
+        "request_id": "dc036ec0263745d9b7ab8a0c5da5ff4b",
+        "accepted": true,
+        "reason": "ACCEPTED",
+        "state": "QUERYING"
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "dc036ec0263745d9b7ab8a0c5da5ff4b",
+        "state": "QUERYING",
+        "reason": "CHANGED"
+      },
+      {
+        "source": "reader",
+        "event": "TX_CHALLENGE",
+        "request_id": "dc036ec0263745d9b7ab8a0c5da5ff4b",
+        "query": 12,
+        "at_ms": 37512,
+        "elapsed_ms": 0,
+        "bytes": 38,
+        "version": 1,
+        "type": 1,
+        "reader_id": 1,
+        "drone_id": 1,
+        "nonce": "9be745dd99b8d3f6e5ce98e4376e7098",
+        "tag": "240f20dfa70af8824605528959848527",
+        "raw": "0101000100019be745dd99b8d3f6e5ce98e4376e7098240f20dfa70af8824605528959848527",
+        "result": "BROADCAST_STARTED"
+      },
+      {
+        "source": "reader",
+        "event": "RESULT",
+        "request_id": "dc036ec0263745d9b7ab8a0c5da5ff4b",
+        "query": 12,
+        "response_received": false,
+        "verdict": "UNKNOWN",
+        "reason": "NO_RESPONSE",
+        "response_ms": null,
+        "elapsed_ms": 3000,
+        "replay": false
+      },
+      {
+        "source": "reader",
+        "event": "STATE",
+        "boot_id": "ead5243f94ed3be1",
+        "request_id": "dc036ec0263745d9b7ab8a0c5da5ff4b",
+        "state": "IDLE",
+        "reason": "CHANGED"
+      }
+    ]
+  }
+]

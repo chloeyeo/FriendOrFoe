@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Reader + Drone · 벤치 콘솔</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<main>
+  <header><div class="eyebrow">FRIEND OR FOE / BENCH DEMO</div><h1>Reader + Drone 콘솔<span class="badge">USB · 115200</span></h1><p>명령을 보낼 때만 질의합니다. 응답 여부와 관계없이 질의 시작 후 3초가 지나면 다시 질의할 수 있습니다.</p></header>
+  <section class="connection" aria-label="시리얼 연결">
+    <label for="port">Reader · ESP32-C3 시리얼 포트</label><div class="port-row"><select id="port"><option value="">포트를 선택하세요</option></select><button id="refresh" class="secondary">새로고침</button><button id="connect">연결</button><button id="disconnect" class="secondary" disabled>해제</button><button id="status" class="secondary" disabled>상태 확인</button></div>
+    <div class="connection-note"><span id="connection">연결 안 됨</span><span>GUI와 터미널 모니터는 같은 포트를 동시에 사용할 수 없습니다.</span></div>
+  </section>
+  <section class="connection drone-connection" aria-label="Drone 시리얼 연결">
+    <label for="drone-port">Drone · NU40 시리얼 포트</label>
+    <div class="port-row"><select id="drone-port"><option value="">포트를 선택하세요</option></select><button id="drone-connect">연결</button><button id="drone-disconnect" class="secondary" disabled>해제</button><button id="drone-status" class="secondary" disabled>상태 확인</button></div>
+    <div class="connection-note"><span id="drone-connection">연결 안 됨</span><span id="drone-detail">연결 후 Drone의 수신 대기·키·무선 상태를 확인합니다.</span></div>
+  </section>
+  <div id="error" class="error" role="alert" hidden></div>
+  <section class="query-panel"><div><div class="eyebrow">READER STATE</div><h2 id="reader-state">연결 대기</h2><p id="reader-detail">연결 후 reader 역할과 인터페이스 v2를 확인합니다.</p></div><button id="query" disabled>질의 1회 <span>↗</span></button></section>
+  <section class="results" aria-label="최근 질의 결과" aria-live="polite">
+    <article><div class="eyebrow">RESPONSE</div><h3 id="received">—</h3><p>현재 nonce에 대한 응답 수신</p></article>
+    <article id="verdict-card"><div class="eyebrow">AUTHENTICATION</div><h3 id="verdict">—</h3><p id="reason">아직 질의하지 않았습니다.</p></article>
+    <article><div class="eyebrow">RESPONSE TIME</div><h3 id="elapsed">—</h3><p id="query-number">응답까지 걸린 시간</p></article>
+  </section>
+  <div class="request-line">REQUEST ID <code id="request-id">—</code></div>
+  <details open><summary>Reader + Drone 상세 시리얼 로그 <span>수신 · 인증 · 송신 · 오류 이벤트</span></summary><div class="log-toolbar"><span>최근 500개 이벤트 · 컴퓨터 수신 순서</span><select id="log-source" aria-label="로그 보드 필터"><option value="all">양쪽 보드</option value="reader">Reader</option><option value="drone">Drone</option></select><button id="copy" class="secondary">복사</button></div><pre id="logs" tabindex="0" aria-label="시리얼 상세 로그">연결을 기다리고 있습니다.</pre></details>
+  <footer>로컬·오프라인 실행 · 이벤트 발생 시에만 로그 전송 <span>질의는 자동 재전송하지 않습니다.</span></footer>
+</main>
+</body></html>

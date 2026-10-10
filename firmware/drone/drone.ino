@@ -1,110 +1,146 @@
-/*
- * drone.ino — the drone-side gadget (stands in for the friendly drone): listens on the radio, answers only an
- * authenticated FOF-1 challenge, and carries the demo attack modes.
- *
- * SKELETON (stream 2 / Ihan): mode enum, mode switching over USB serial and the answer flow are laid out; the
- * radio exchange and the crypto are TODO. The drone transmits nothing until it is asked.
- *
- * Libraries: ArduinoJson 7.x, fof1 (firmware/iff), rweather Crypto or ESP32 mbedtls (through fof1).
- * How the modes are switched on stage (button, serial, DIP) is README open question #1 -> docs/GADGET_LINK.md.
- */
-#include <ArduinoJson.h>
-#include <fof1.h>
+/* NU40 responder: RF는 인증된 질의에만 응답하고 USB는 이벤트만 전송합니다. */
+#include <FofBoard.h>
+#include <FofEventLog.h>
+#include "config.h"
 
-/* The demo's attack modes (README section 2 and PROJECT.md). */
-enum AttackMode : uint8_t {
-  MODE_HONEST = 0,   // answer correctly with the real position
-  MODE_REPLAY,       // re-send the previous answer (old nonce) -> FOE · replayed nonce
-  MODE_RELAY,        // answer with a far-away position (relayed drone) -> FOE · position mismatch
-  MODE_LATE,         // answer correctly but after a delay -> FOE · late response
-  MODE_SILENT,       // never answer -> UNKNOWN · no response
-  MODE_IMPOSTOR,     // answer with the wrong key -> FOE · bad tag
-};
+fof::KeyStore keys;
+fof::Radio radio;
+fof::ReplyCache cache;
+bool ready = false;
+char bootId[17] = {};
+fof::Lines<16, 768> controls;
+fof::Lines<16, 640> diagnostics;
+uint32_t droppedPacketLogs = 0;
 
-static const char* MODE_NAMES[] = { "HONEST", "REPLAY", "RELAY", "LATE", "SILENT", "IMPOSTOR" };
-static AttackMode mode = MODE_HONEST;
-
-static const uint16_t DRONE_ID = 7;  // "RQ-07"
-static const uint32_t LATE_DELAY_MS = 3500;
-
-// TODO(stream 2): the pre-placed 32-byte master key from NVS/EEPROM; the TEST key below matches eval/gen_vectors.py
-// and must never ship. The impostor mode uses IMPOSTOR_KEY (every byte 0xA5), as the bad_tag vector does.
-static const uint8_t MASTER_KEY[FOF1_KEY_LEN] = {
-  0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
-};
-static const uint8_t IMPOSTOR_KEY[FOF1_KEY_LEN] = {
-  0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5,
-  0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5,
-};
-
-// Configured positions for the indoor demo (no GPS fix in the venue): honest = where the drone really is,
-// relay = 5 km away. TODO(stream 2): agree the coordinates with the observer config (README open question #2).
-static const fof1_position HONEST_POS = { 375666, 1269781, 6 };   // ~Seoul, 1e-4 deg, alt 55 m / 10
-static const fof1_position RELAY_POS  = { 375998, 1270200, 15 };
-
-static uint8_t lastResponse[FOF1_RESPONSE_LEN];
-static bool haveLastResponse = false;
-
-static char lineBuf[128];
-static size_t lineLen = 0;
-
-static void sendStatus() {
-  JsonDocument doc;
-  doc["type"] = "status";
-  doc["fw"] = "0.1.0-skeleton";
-  doc["mode"] = MODE_NAMES[mode];
-  serializeJson(doc, Serial);
-  Serial.println();
-}
-
-/* Serial control for the bench and the stage: {"cmd":"mode","mode":"REPLAY"} and {"cmd":"status"}. */
-static void handleLine(const char* line) {
-  JsonDocument doc;
-  if (deserializeJson(doc, line)) return;
-  const char* cmd = doc["cmd"] | "";
-  if (strcmp(cmd, "mode") == 0) {
-    const char* name = doc["mode"] | "";
-    for (uint8_t i = 0; i < sizeof(MODE_NAMES) / sizeof(MODE_NAMES[0]); i++) {
-      if (strcmp(name, MODE_NAMES[i]) == 0) mode = (AttackMode)i;
-    }
+void hexBytes(const uint8_t* bytes, size_t length, char* out) {
+  constexpr char digits[] = "0123456789abcdef";
+  for (size_t i = 0; i < length; ++i) {
+    out[2*i] = digits[bytes[i] >> 4]; out[2*i+1] = digits[bytes[i] & 15];
   }
-  sendStatus();
+  out[2*length] = 0;
 }
-
-/* Called when a 31-byte challenge arrives on the radio. */
-static void onChallenge(const uint8_t wire[FOF1_CHALLENGE_LEN], uint32_t nowUnix) {
-  // TODO(stream 2):
-  //   day = fof1_day_of(challenge t) — accept only if |t - nowUnix| <= 86400 (clock drift: yesterday/today/tomorrow)
-  //   day_key = fof1_derive_day_key(MASTER_KEY, day); if (fof1_check_challenge(day_key, wire, &ch) != FOF1_FRIEND) return; // silent
-  //   switch (mode):
-  //     SILENT:   return;
-  //     REPLAY:   if (haveLastResponse) radio.send(lastResponse, 37); return;
-  //     IMPOSTOR: key from IMPOSTOR_KEY instead of MASTER_KEY, HONEST_POS
-  //     RELAY:    RELAY_POS
-  //     LATE:     delay(LATE_DELAY_MS) then HONEST_POS
-  //     HONEST:   HONEST_POS
-  //   drone_key = fof1_derive_drone_key(day_key, DRONE_ID); fof1_build_response(drone_key, &ch, DRONE_ID, &pos, out);
-  //   radio.send(out, 37); memcpy(lastResponse, out, 37); haveLastResponse = true;
-  (void)wire; (void)nowUnix;
+void flushLogs() {
+  if (diagnostics.offset) diagnostics.drain();
+  else if (controls.count) controls.drain();
+  else if (droppedPacketLogs) {
+    char line[128];
+    snprintf(line, sizeof(line), "{\"event\":\"DIAG\",\"role\":\"drone\",\"dropped_packet_logs\":%lu}\n",
+             static_cast<unsigned long>(droppedPacketLogs));
+    if (controls.push(line)) droppedPacketLogs = 0;
+  } else diagnostics.drain();
 }
-
+bool commandCapacity() { return controls.count <= 12 && !controls.offset && !diagnostics.offset; }
+void status(const char* id, const char* reason = "REQUESTED") {
+  char metrics[420], line[768];
+  radio.diagnosticsJson(metrics, sizeof(metrics));
+  snprintf(line, sizeof(line),
+    "{\"event\":\"STATUS\",\"role\":\"drone\",\"interface_version\":2,\"boot_id\":\"%s\","
+    "\"request_id\":\"%s\",\"reason\":\"%s\",\"key_configured\":%s,\"radio_ready\":%s,"
+    "\"state\":\"%s\",\"reader_id\":%u,\"drone_id\":%u,\"radio_diag\":%s}\n", bootId, id, reason,
+    keys.ready ? "true" : "false", ready ? "true" : "false",
+    !ready ? "RADIO_ERROR" : keys.ready ? "LISTENING" : "KEY_NOT_CONFIGURED", READER_ID, DRONE_ID, metrics);
+  controls.push(line);
+}
+void logPacket(const char* event, const fof::ReceivedPacket& packet, const char* result) {
+  char raw[77], nonce[33] = {}, tag[33] = {}, fields[240] = {}, line[640];
+  const size_t captured = packet.length < 0 ? 0 : packet.length > 38 ? 38 : packet.length;
+  hexBytes(packet.bytes, captured, raw);
+  if (packet.length == 38) {
+    hexBytes(packet.bytes + fof::kNonceOffset, fof::kNonceSize, nonce);
+    hexBytes(packet.bytes + fof::kBodySize, fof::kTagSize, tag);
+    snprintf(fields, sizeof(fields),
+      ",\"version\":%u,\"type\":%u,\"reader_id\":%u,\"drone_id\":%u,\"nonce\":\"%s\",\"tag\":\"%s\"",
+      packet.bytes[0], packet.bytes[1], fof::readU16(packet.bytes + 2), fof::readU16(packet.bytes + 4), nonce, tag);
+  }
+  snprintf(line, sizeof(line),
+    "{\"event\":\"%s\",\"role\":\"drone\",\"at_ms\":%lu,\"bytes\":%d%s,\"raw\":\"%s\",\"result\":\"%s\"}\n",
+    event, static_cast<unsigned long>(packet.arrivedAt), packet.length, fields, raw, result);
+  if (!diagnostics.push(line)) ++droppedPacketLogs;
+}
+void diagnostic(const char* reason) {
+  char line[160];
+  snprintf(line, sizeof(line), "{\"event\":\"DIAG\",\"role\":\"drone\",\"reason\":\"%s\",\"at_ms\":%lu}\n",
+           reason, static_cast<unsigned long>(millis()));
+  if (!diagnostics.push(line)) ++droppedPacketLogs;
+}
+bool validId(const char* id) {
+  const size_t length = strlen(id);
+  if (!length || length > 32) return false;
+  for (size_t i = 0; i < length; ++i) {
+    const char c = id[i];
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9') || c == '-' || c == '_')) return false;
+  }
+  return true;
+}
+bool command(const char* line) {
+  if (!line) { diagnostic("COMMAND_TOO_LONG"); return true; }
+  if (!strcmp(line, "STATUS")) { status(""); return true; }
+  if (!strncmp(line, "STATUS ", 7)) {
+    if (validId(line + 7)) status(line + 7); else diagnostic("INVALID_REQUEST_ID");
+    return true;
+  }
+  if (!strcmp(line, "HELP")) {
+    controls.push("{\"event\":\"HELP\",\"role\":\"drone\",\"commands\":[\"STATUS [request_id]\",\"HELP\",\"KEY <64 hex digits>\"]}\n");
+    return true;
+  }
+  if (!strncmp(line, "KEY ", 4)) return false;
+  diagnostic("INVALID_COMMAND"); return true;
+}
+void answerChallenge(const fof::ReceivedPacket& packet) {
+  if (!keys.ready) { logPacket("RX_CHALLENGE", packet, "KEY_NOT_CONFIGURED"); return; }
+  const fof::Reason result = fof::verifyPacket(packet.bytes, packet.length,
+      fof::kChallenge, READER_ID, DRONE_ID, keys.key);
+  if (result != fof::Reason::None) {
+    logPacket("RX_CHALLENGE", packet, fof::reasonName(result)); return;
+  }
+  const uint32_t now = millis();
+  if (fof::elapsed(now, packet.arrivedAt) >= fof::ReplyCache::kReplyWindowMs) {
+    logPacket("RX_CHALLENGE", packet, "IGNORED_EXPIRED_IN_QUEUE"); return;
+  }
+  cache.expire(now);
+  const uint8_t* nonce = packet.bytes + fof::kNonceOffset;
+  fof::ReplyCache::Entry* entry = cache.find(nonce);
+  const bool duplicate = entry != nullptr;
+  if (duplicate) {
+    if (!fof::ReplyCache::mayReply(*entry, now)) {
+      logPacket("RX_CHALLENGE", packet, "IGNORED_DUPLICATE_LIMIT"); return;
+    }
+  } else {
+    entry = cache.freeEntry();
+    if (!entry) { logPacket("RX_CHALLENGE", packet, "IGNORED_CACHE_FULL"); return; }
+    if (!fof::makePacket(fof::kResponse, READER_ID, DRONE_ID, nonce, keys.key, entry->response)) {
+      logPacket("RX_CHALLENGE", packet, "HMAC_ERROR"); return;
+    }
+    memcpy(entry->nonce, nonce, fof::kNonceSize);
+    entry->createdAt = packet.arrivedAt; entry->sends = 0; entry->used = true;
+  }
+  logPacket("RX_CHALLENGE", packet, duplicate ? "AUTHENTICATED_DUPLICATE" : "AUTHENTICATED");
+  const int sent = radio.send(entry->response);
+  if (sent == fof::kSendOk) ++entry->sends;
+  fof::ReceivedPacket response;
+  memcpy(response.bytes, entry->response, fof::kPacketSize);
+  response.length = fof::kPacketSize; response.arrivedAt = millis();
+  logPacket("TX_RESPONSE", response, sent == fof::kSendOk ? "BROADCAST_STARTED" :
+            sent == fof::kSendBusy ? "ALREADY_ADVERTISING" : "RADIO_ERROR");
+}
 void setup() {
   Serial.begin(115200);
-  // TODO(stream 2): radio.begin() in receive mode; a button/DIP read for the mode; NVS for the key.
-  sendStatus();
+  delay(1000);
+  keys.begin();
+  // 키가 없더라도 무선 초기화/수신과 USB 진단은 계속합니다.
+  ready = radio.begin(fof::kChallenge);
+  uint8_t randomBoot[8]; fof::fillRandom(randomBoot, sizeof(randomBoot)); hexBytes(randomBoot, 8, bootId);
+  status("", "BOOT");
 }
-
 void loop() {
-  while (Serial.available() > 0) {
-    char c = (char)Serial.read();
-    if (c == '\n' || c == '\r') {
-      if (lineLen > 0) { lineBuf[lineLen] = '\0'; handleLine(lineBuf); lineLen = 0; }
-    } else if (lineLen < sizeof(lineBuf) - 1) {
-      lineBuf[lineLen++] = c;
-    } else {
-      lineLen = 0;
-    }
+  flushLogs(); keys.poll(command, commandCapacity);
+  if (ready) {
+    radio.poll();
+    fof::ReceivedPacket packet;
+    for (int i = 0; i < 16 && radio.receive(packet); ++i) answerChallenge(packet);
+    if (radio.takeRadioError()) diagnostic("RADIO_ERROR");
+    if (radio.takeQueueOverflow()) diagnostic("RECEIVE_QUEUE_OVERFLOW");
   }
-  // TODO(stream 2): if (radio.available() == FOF1_CHALLENGE_LEN) { radio.read(buf); onChallenge(buf, unixNow()); }
+  flushLogs(); delay(1);
 }

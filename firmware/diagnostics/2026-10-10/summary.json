@@ -1,0 +1,133 @@
+[
+  {
+    "name": "baseline",
+    "count": 12,
+    "drone_received": 3,
+    "drone_started_response": 3,
+    "friend": 3,
+    "rx_to_tx_ms": [
+      1,
+      1,
+      0,
+      1
+    ],
+    "errors": []
+  },
+  {
+    "name": "diag100",
+    "count": 12,
+    "drone_received": 4,
+    "drone_started_response": 4,
+    "friend": 2,
+    "rx_to_tx_ms": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "errors": []
+  },
+  {
+    "name": "scan10",
+    "count": 12,
+    "drone_received": 12,
+    "drone_started_response": 12,
+    "friend": 11,
+    "rx_to_tx_ms": [
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1
+    ],
+    "errors": []
+  },
+  {
+    "name": "diag100-repeat",
+    "count": 12,
+    "drone_received": 10,
+    "drone_started_response": 10,
+    "friend": 6,
+    "rx_to_tx_ms": [
+      1,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      0,
+      1
+    ],
+    "errors": []
+  },
+  {
+    "name": "adv600",
+    "count": 12,
+    "drone_received": 12,
+    "drone_started_response": 12,
+    "friend": 8,
+    "rx_to_tx_ms": [
+      1,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0
+    ],
+    "errors": []
+  },
+  {
+    "name": "final10",
+    "count": 12,
+    "drone_received": 8,
+    "drone_started_response": 8,
+    "friend": 7,
+    "rx_to_tx_ms": [
+      1,
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "errors": []
+  }
+]
