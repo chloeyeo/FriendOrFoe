@@ -60,6 +60,12 @@ data class ClassMap(
             expectedLabels = mapOf(0 to "drone"),
         )
 
+        /**
+         * The same drone checkpoint on a crop round: the crop is cut around a drone the tracker already follows, so
+         * the floor drops to the detector's own 0.25 (the small crop input scores a confirmed drone lower, 0.3-0.4).
+         */
+        val DRONE_RAHUL_CROP = DRONE_RAHUL.copy(tag = "crop", thresholds = mapOf(ObjClass.DRONE to 0.25f))
+
         /** `ustc-community/dfine-small-coco` (D-FINE S, COCO 80): only 0 person >= 0.50, everything else dropped. */
         val DFINE_PERSON = ClassMap(
             tag = "person",

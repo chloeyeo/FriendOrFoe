@@ -17,6 +17,7 @@ class DualDetectorTest {
         override var isOpen: Boolean = false
         var frames = 0
         var closed = false
+        val sizes = ArrayList<String>()
 
         override fun open(): OpenTiming {
             failOpen?.let { throw IllegalStateException(it) }
@@ -26,6 +27,7 @@ class DualDetectorTest {
 
         override fun detectRaw(frame: Frame): List<RawDetection> {
             frames++
+            sizes += "${frame.width}x${frame.height}"
             rawListener?.invoke(rows)
             return rows
         }
@@ -106,6 +108,76 @@ class DualDetectorTest {
         } catch (e: IllegalStateException) {
             assertEquals("person model: model dir missing: config.json", e.message)
         }
+    }
+
+    private val big = Frame(1280, 720, ByteArray(1280 * 720 * 4))
+
+    @Test
+    fun `a crop round runs the crop model on one square crop per drone and maps the best box back`() {
+        val drone = FakeModel(ClassMap.DRONE_RAHUL, listOf(RawDetection(0L, 0.9f, droneBox, "drone")))
+        val person = FakeModel(ClassMap.DFINE_PERSON, listOf(RawDetection(0L, 0.9f, personBox, "person")))
+        // In crop pixels: a 0.27 box (kept by the crop floor 0.25, the best) and a 0.26 one; a 0.2 row is dropped.
+        val crop = FakeModel(
+            ClassMap.DRONE_RAHUL_CROP,
+            listOf(
+                RawDetection(0L, 0.27f, BoxF(50f, 70f, 150f, 130f), "drone"),
+                RawDetection(0L, 0.26f, BoxF(0f, 0f, 20f, 20f), "drone"),
+                RawDetection(0L, 0.2f, BoxF(10f, 10f, 30f, 30f), "drone"),
+            ),
+        )
+        val dual = DualDetector(drone, person, cropDrone = crop)
+        dual.open()
+        assertTrue(dual.cropModelOpen)
+        val tracked = BoxF(450f, 270f, 550f, 330f) // crop (400, 200) side 200
+        val out = dual.detectRound(big, RoundPlan(full = false, crops = listOf(tracked), person = false))
+        assertEquals(listOf(Detection(ObjClass.DRONE, 0.27f, BoxF(450f, 270f, 550f, 330f))), out)
+        assertEquals(listOf("200x200"), crop.sizes)
+        assertEquals(0, drone.frames) // the full-frame drone model and the person model were skipped
+        assertEquals(0, person.frames)
+        assertEquals(0L, dual.lastPersonMs)
+        assertEquals("crop", dual.lastPlan?.kind)
+    }
+
+    @Test
+    fun `a crop round with two drones and the person model merges everything`() {
+        val person = FakeModel(ClassMap.DFINE_PERSON, listOf(RawDetection(0L, 0.8f, BoxF(900f, 100f, 1000f, 400f), "person")))
+        val crop = FakeModel(ClassMap.DRONE_RAHUL_CROP, listOf(RawDetection(0L, 0.5f, BoxF(40f, 40f, 56f, 56f), "drone")))
+        val dual = DualDetector(FakeModel(ClassMap.DRONE_RAHUL, emptyList()), person, cropDrone = crop)
+        dual.open()
+        val plan = RoundPlan(full = false, crops = listOf(BoxF(100f, 100f, 120f, 120f), BoxF(600f, 300f, 616f, 316f)), person = true)
+        val out = dual.detectRound(big, plan)
+        assertEquals(listOf("96x96", "96x96"), crop.sizes)
+        assertEquals(
+            listOf(
+                Detection(ObjClass.PERSON, 0.8f, BoxF(900f, 100f, 1000f, 400f)),
+                Detection(ObjClass.DRONE, 0.5f, BoxF(62f + 40f, 62f + 40f, 62f + 56f, 62f + 56f)),
+                Detection(ObjClass.DRONE, 0.5f, BoxF(560f + 40f, 260f + 40f, 560f + 56f, 260f + 56f)),
+            ),
+            out,
+        )
+    }
+
+    @Test
+    fun `without an opened crop model the crops run on the full-frame drone model`() {
+        val drone = FakeModel(ClassMap.DRONE_RAHUL, listOf(RawDetection(0L, 0.6f, BoxF(10f, 10f, 30f, 30f), "drone")))
+        val crop = FakeModel(ClassMap.DRONE_RAHUL_CROP, emptyList(), failOpen = "model dir missing: config.json")
+        val dual = DualDetector(drone, FakeModel(ClassMap.DFINE_PERSON, emptyList()), cropDrone = crop)
+        val timing = dual.open()
+        assertEquals(null, timing.crop)
+        assertFalse(dual.cropModelOpen)
+        assertEquals("crop model: model dir missing: config.json", dual.cropOpenFailure)
+        dual.detectRound(big, RoundPlan(full = false, crops = listOf(BoxF(100f, 100f, 120f, 120f)), person = false))
+        assertEquals(listOf("96x96"), drone.sizes)
+        assertEquals(0, crop.frames)
+    }
+
+    @Test
+    fun `a full round without the person model skips it`() {
+        val person = FakeModel(ClassMap.DFINE_PERSON, listOf(RawDetection(0L, 0.9f, personBox, "person")))
+        val dual = DualDetector(FakeModel(ClassMap.DRONE_RAHUL, listOf(RawDetection(0L, 0.6f, droneBox, "drone"))), person)
+        val out = dual.detectRound(frame, RoundPlan(full = true, person = false))
+        assertEquals(listOf(Detection(ObjClass.DRONE, 0.6f, droneBox)), out)
+        assertEquals(0, person.frames)
     }
 
     @Test

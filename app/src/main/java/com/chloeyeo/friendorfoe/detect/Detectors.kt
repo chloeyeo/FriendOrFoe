@@ -11,7 +11,7 @@ object Detectors {
     fun create(config: DetectorConfig): Detector = when (config) {
         DetectorConfig.Fake -> FakeDetector()
         is DetectorConfig.ClikaRt -> ClikaRtDetector(config.modelDir)
-        is DetectorConfig.Dual -> DualDetector.clikaRt(config.droneDir, config.personDir)
+        is DetectorConfig.Dual -> DualDetector.clikaRt(config.droneDir, config.personDir, ModelDirs.cropFor(config.droneDir))
         is DetectorConfig.Http -> {
             check(BuildConfig.ALLOW_HTTP_DETECTOR) {
                 "HttpDetector is only allowed in builds with ALLOW_HTTP_DETECTOR (debug); the demo runs offline"

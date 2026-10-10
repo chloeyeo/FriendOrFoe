@@ -56,6 +56,22 @@ object ModelDirs {
     fun drone(filesDir: File, input: Int): String = File(filesDir, "models/rtdetr_v2_drone_rahul_$input").path
     fun person(filesDir: File, input: Int): String = File(filesDir, "models/dfine_small_coco_$input").path
 
+    /**
+     * The crop-round drone model's directory name, a sibling of the drone dir: the same weights at a small input
+     * (see [cropFor]). The `crop_model` launch extra may name another sibling, or `none` (crop rounds then run on the
+     * full-frame drone model). Written once per process before the detector is built.
+     */
+    const val DEFAULT_CROP_NAME = "rtdetr_v2_drone_rahul_crop160"
+
+    @Volatile
+    var cropName: String? = DEFAULT_CROP_NAME
+
+    /** The crop model dir beside [droneDir] (`…/models/rtdetr_v2_drone_rahul_crop160`), or null when disabled. */
+    fun cropFor(droneDir: String): String? = cropName?.let { File(File(droneDir).parentFile, it).path }
+
+    /** A plain snapshot dir name (letters, digits, `_`, `-`, `.` but no `..`), as the `crop_model` / `person_model` extras take. */
+    fun isPlainName(name: String): Boolean = name.matches(Regex("[A-Za-z0-9_.-]{1,80}")) && !name.contains("..")
+
     /** [input] when it is a size we ship a drone snapshot for, else null. */
     fun droneInput(input: Int?): Int? = input?.takeIf { it in DRONE_INPUTS }
     fun personInput(input: Int?): Int? = input?.takeIf { it in PERSON_INPUTS }
