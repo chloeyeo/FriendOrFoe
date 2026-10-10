@@ -205,7 +205,7 @@ developed on the bench over USB-C to a laptop, the whole link can be exercised b
 ## 4. Plan
 
 The detailed plan lives in `.planning/` (GSD): `ROADMAP.md` (phases, success criteria, research flags),
-`REQUIREMENTS.md` (54 requirement IDs), `research/` (stack, features, architecture, pitfalls with sources).
+`REQUIREMENTS.md` (51 requirement IDs), `research/` (stack, features, architecture, pitfalls with sources).
 The roadmap was written for one developer in series; with three of us, Phases 2, 3 and 4 run **in parallel**
 and meet at the integration checkpoints below.
 
@@ -264,7 +264,7 @@ signal source (it is the on-stage fallback if the gadget misbehaves).
    - `sdk.dir` — your Android SDK (Android Studio writes this one).
    - `clikaRtMavenRepo` — the folder where you extracted `clika-runtime-maven-0.6.4.zip` (it contains
      `io/clika/clika-runtime-android/0.6.4/*.aar`). Download it from the team project on platform.clika.io.
-     Without it the app module does not resolve; `:iff` builds regardless.
+     Without it the app module does not resolve; the firmware and the Python tools need nothing from it.
    - `clika.runtimeLicenseFile` — optional, path to a file holding the `CLIKA1-…` credential. Only the phone
      that runs on-device detection needs it (the license must be an **Offline** bundle with hardware seats;
      an Online key stops working the moment the network is blocked).
