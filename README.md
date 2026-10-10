@@ -65,7 +65,7 @@ and **physics** (round-trip timing, radio signal strength, optical persistence) 
 ```
  phone A (observer)                                                     laptop
  ┌──────────────────────────────────────────────────────────────┐      ┌───────────────────────┐
- │ camera/   CameraX Preview + ImageAnalysis (RGBA, ~1 fps)      │      │ scrcpy mirror (USB)   │
+ │ camera/   CameraX Preview + ImageAnalysis (RGBA + gray 10 fps)│      │ scrcpy mirror (USB)   │
  │    │                                                         │      │ laptop/dashboard      │
  │    ▼                                                         │ HTTP │   FastAPI /dashboard  │
  │ detect/   Detector ──► ClikaRtDetector (RT-DETR v2, in-proc) │─────►│   POST /api/events    │
@@ -73,7 +73,7 @@ and **physics** (round-trip timing, radio signal strength, optical persistence) 
  │             └──► FakeDetector (UI dev, scripted boxes)       │      │   --offline (eval,    │
  │    │ boxes                                                   │      │   2nd ClikaRT device) │
  │    ▼                                                         │      └───────────────────────┘
- │ track/    box ids, challenge-window lock                     │
+ │ track/    box ids, 10 fps motion follow, challenge lock      │
  │    │                                                         │        gadgets (USB OTG)
  │    ▼            challenge ▲   ▼ verdict + rssi + ms + nonce  │      ┌───────────────────────┐
  │ session/  IffCoordinator ──► signal/ SignalSource ───────────┼─USB─►│ reader gadget: radio  │
@@ -458,3 +458,68 @@ internet. If the license check reaches the server, the runtime stops mid-demo.
 ### PIT-04 — demo target decision (H3)
 
 _pending checkpoint 2 (plan 02-06)_
+
+### Speed-up: 320x320 model input and 10 fps box tracking
+
+Request (Chloe): halve the model resolution so the drone is recognised much faster, and run the video input at
+about 10 frames per second, because the box followed a moving drone far too late. Two changes, measured on phone A
+(Galaxy A06, airplane mode on, Wi-Fi off, 2 runtime threads, same session, same grey scene):
+
+**1. Detector input 640x640 -> 320x320 (the default now).** Both models of the dual detector run on snapshot copies
+whose `preprocessor_config.json` says `"size": {"height": 320, "width": 320}`; the weights are the same files
+(`anchor_image_size` is null in both configs, so a smaller input is structurally fine). The binding reads the size
+from the snapshot: the warm-up and every tick got about 3x faster.
+
+| per frame on phone A | 640x640 (`--es detector dual640`) | 320x320 (default, `--es detector dual`) |
+|---|---|---|
+| drone model (RahulKate RT-DETR v2 R50) | 9.0-10.0 s (earlier run 7.5-8.5 s) | **2.6-3.4 s** |
+| person model (D-FINE S) | 2.2-2.6 s (earlier run 1.9-2.2 s) | **0.86-1.1 s** |
+| one detection, both models | 11.5-12.5 s, 0.08-0.09 fps | **3.6-4.3 s, 0.23-0.28 fps** |
+| warm-up at load | drone 11.1 s, person 2.8 s | drone 2.8-4.2 s, person 0.8-1.2 s |
+
+On the laptop (`clikart-cli`, 2 threads) the drone model still found 6 of 6 test drone photos at 320 (scores
+0.32-0.87). A smaller input does lose small, far drones first; flip back with `--es detector dual640` to compare.
+
+Phone setup for the 320 dirs (once; the safetensors are byte-identical to the 640 dirs, md5 checked):
+
+```bash
+# from the 640 snapshot dirs plus the 320 preprocessor_config.json
+adb shell mkdir -p /data/local/tmp/models/rtdetr_v2_drone_rahul_320 /data/local/tmp/models/dfine_small_coco_320
+adb push <m_drone_320>/config.json <m_drone_320>/preprocessor_config.json /data/local/tmp/models/rtdetr_v2_drone_rahul_320/
+adb push <m_person_320>/config.json <m_person_320>/preprocessor_config.json /data/local/tmp/models/dfine_small_coco_320/
+adb shell cp /data/local/tmp/models/rtdetr_v2_drone_rahul/model.safetensors /data/local/tmp/models/rtdetr_v2_drone_rahul_320/
+adb shell cp /data/local/tmp/models/dfine_small_coco/model.safetensors /data/local/tmp/models/dfine_small_coco_320/
+adb shell run-as com.chloeyeo.friendorfoe sh -c 'mkdir -p files/models/rtdetr_v2_drone_rahul_320 files/models/dfine_small_coco_320 && cp /data/local/tmp/models/rtdetr_v2_drone_rahul_320/* files/models/rtdetr_v2_drone_rahul_320/ && cp /data/local/tmp/models/dfine_small_coco_320/* files/models/dfine_small_coco_320/'
+```
+
+**2. Boxes follow the object at 10 fps between detections.** Even at 320 a detection takes about 4 s, so the rings
+are now moved by a cheap motion tracker at 10 frames per second and corrected whenever a detection arrives:
+
+- `camera/CameraController` takes one analysis frame per 100 ms (a deadline schedule, so a 24 or 30 fps camera both
+  give 10 fps) and samples it into a 320x180 grayscale frame straight from the RGBA plane (`camera/GraySampler`,
+  rowStride/pixelStride honoured, no second full-size copy), handed to its own `motion` thread. The preview itself
+  stays at the camera's full rate. The full RGBA copy still goes to the runtime lane only when it is idle, with the
+  capture timestamp of that image.
+- `track/MotionTracker` (pure Kotlin) keeps the last 5 s of gray frames. Per track it holds a template patch and
+  searches it in each new frame (sum of absolute differences, coarse on a half-resolution level, then every pixel
+  within 2 px; radius max(12 px, half the box) around the last position plus the last velocity). A poor match does
+  not move the box (it keeps its last position and resumes when the object is found again).
+- Latency compensation: a detection made on the frame captured at t0 arrives about 4 s later. Its boxes are matched
+  on the buffered gray frame nearest t0 and fast-forwarded through every frame since, so the corrected ring lands
+  where the drone is now, not where it was 4 s ago. This runs outside the coordinator's lock.
+- `session/IffCoordinator.motionTick` moves existing tracks only (same ids, same IFF state, and a tapped box keeps
+  its challenge lock while it follows the object); creating and dropping tracks is still the detection tick's job.
+- The strip shows both rates, for example `track 9.9 fps · detect 3.6 s (2.7+0.9)` (drone + person seconds).
+
+| motion path on phone A | measured |
+|---|---|
+| motion rate | 9.7-10.3 fps, steady while the detector runs (`motion … fps` log line, once per second) |
+| gray sample (camera thread) | 14-17 ms per frame (320x180 from 1280x720) |
+| motion tick, nothing tracked | 0.13-0.23 ms |
+| one tracked box, per frame (`--ez motion_bench true`, warm, beside the detector) | 0.46 ms (48 px box) · 1.1 ms (160 px) · 2.9 ms (400 px) |
+| fast-forward of one detection over 3 s (30 frames) | 16 ms (48 px) · 34 ms (160 px) · 89 ms (400 px) |
+
+Logcat: `adb logcat -s FoF` shows `motion F fps median M ms/tick sample S ms gray 320x180 tracks=K` once per second
+and `tick N ms (D drone + P person) … motion F fps` per detection. Limits: the tracker only translates boxes (no
+scale change between detections), and a drone against flat sky or a flat wall has little texture to match, so its
+ring then waits for the next detection.
