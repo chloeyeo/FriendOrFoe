@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
     /** On the lane. Frames are dropped while the runtime loads or after it refused, so the strip keeps its note. */
     private fun onFrame(frame: Frame) {
         if (app.runtimeLoading) return
-        if ((app.coordinator.detector as? ClikaRtDetector)?.isOpen == false) return
+        if ((app.coordinator.detector as? com.chloeyeo.friendorfoe.detect.LoadableDetector)?.isOpen == false) return
         app.runTick(frame)
     }
 
