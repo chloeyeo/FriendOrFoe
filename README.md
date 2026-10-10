@@ -68,7 +68,7 @@ and **physics** (round-trip timing, radio signal strength, optical persistence) 
  │ camera/   CameraX Preview + ImageAnalysis (RGBA + gray 10 fps)│      │ scrcpy mirror (USB)   │
  │    │                                                         │      │ laptop/dashboard      │
  │    ▼                                                         │ HTTP │   FastAPI /dashboard  │
- │ detect/   Detector ──► ClikaRtDetector (RT-DETR v2, in-proc) │─────►│   POST /api/events    │
+ │ detect/   Detector ──► OnnxYoloDetector (YOLO11n, in-proc)   │─────►│   POST /api/events    │
  │             ├──► HttpDetector (laptop serve, contingency)    │      │ clikart-cli serve     │
  │             └──► FakeDetector (UI dev, scripted boxes)       │      │   --offline (eval,    │
  │    │ boxes                                                   │      │   2nd ClikaRT device) │
@@ -116,7 +116,7 @@ EEPROM for the pre-placed key. Docs: https://docs.arduino.cc and https://arduino
 |---|---|---|
 | `app/` | 1 | `FofApplication` (ClikaRT bring-up on one runtime lane, license from `BuildConfig`/private storage, model directory), `Prefs` |
 | `camera/` | 1 | `CameraController` (Preview + ImageAnalysis, KEEP_ONLY_LATEST, 1280×720 or 1920×1080, landscape locked), `FrameTransform` (analysis frame → preview coordinates) |
-| `detect/` | 1 | `Detector` interface, `Detection`, `ObjClass` (PERSON, DRONE), `LabelMap` (RT-DETR `labelId` 0 → person, 4/14/33 → drone), `ClikaRtDetector`, `HttpDetector`, `FakeDetector`, `Detectors.create(config)` |
+| `detect/` | 1 | `Detector` interface, `Detection`, `ObjClass` (PERSON, DRONE), `LabelMap` (RT-DETR `labelId` 0 → person, 4/14/33 → drone), `OnnxYoloDetector` (the default drone detector: a drone-trained YOLO ONNX through ClikaRT's graph runtime, section 11), `ClikaRtDetector` (RT-DETR / D-FINE snapshots through ClikaRT modelverse), `DualDetector`, `HttpDetector`, `FakeDetector`, `Detectors.create(config)` |
 | `track/` | 1 | `Tracker` (IoU matching, stable ids), `BoxLock` (freeze the tapped box for the 10 s window) |
 | `signal/` | 2 | `SignalSource` interface, `UsbGadgetSignalSource` (USB CDC serial, newline-delimited JSON), `ReChecks` (pure Kotlin: nonce-never-seen ledger, round-trip budget, RSSI floor; unit-tested), `FakeSignalSource` (scripted answers for every verdict) |
 | `session/` | lead | `IffCoordinator` (tap → challenge → wait for answer → re-check → verdict → events; `reset()` for the Reset button), `ObserverUiState` (the only thing the UI renders), `EventLog` |
@@ -353,7 +353,9 @@ signal source (it is the on-stage fallback if the gadget misbehaves).
    Gadget stream: Arduino IDE 2.x or `arduino-cli`, the board package for the gadget's MCU, the libraries
    ArduinoJson and rweather Crypto (or mbedtls on ESP32); open `firmware/selftest`, flash it over USB-C and
    watch the serial monitor print one PASS per vector.
-4. Models on the phone (stream 1 only): fetch on the laptop with
+4. Models on the phone (stream 1 only): the drone detector is `files/models/drone_yolo11n_480.onnx` (marie
+   YOLO11n at 480; export and push in [section 11](#11-drone-detector-v2-marie-yolo11n-at-480-the-default-now)).
+   The older RT-DETR snapshots (fallback and person model): fetch on the laptop with
    `clikart-cli --cache-dir <cache> fetch PekingU/rtdetr_v2_r18vd`, then push the snapshot directory contents
    to `/sdcard/Android/data/com.chloeyeo.friendorfoe/files/models/rtdetr_v2_r18vd/` with `adb push <snapshot>/. <dest>`.
 5. Laptop extras: Python 3.13 with `fastapi`, `uvicorn`, `requests`, `pillow` for the dashboard and eval;
@@ -387,9 +389,12 @@ Open (answer in the chat before H1):
 ## 8. What pre-existed vs. what we built
 
 Pre-existing: ClikaRT 0.6.4 runtime and its Kotlin binding, the public RT-DETR v2 and OWLv2 weights, the
+community drone-trained YOLO weights on Hugging Face (the default drone detector `marie-kjelberg/drone-detector`
+YOLO11n, AGPL-3.0, and the benchmarked alternatives in section 11), Ultralytics (ONNX export only), the
 Android Studio Compose template, CameraX, the usb-serial-for-android library, the Arduino core and the
 ArduinoJson / Crypto libraries, FastAPI, scrcpy.
-Built during the hackathon: everything in this repository — the detector integration, the tracker and box
+Built during the hackathon: everything in this repository — the detector integration (incl. running YOLO ONNX
+graphs through ClikaRT's `OnnxModel` and the drone-model benchmark on our own drone), the tracker and box
 lock, the FOF-1 protocol library with its vectors and selftest, the reader and drone firmware, the USB
 gadget link, the observer UI, the dashboard, the eval, the docs.
 
@@ -533,7 +538,7 @@ and `tick N ms (D drone + P person) … motion F fps` per detection. Limits: the
 scale change between detections), and a drone against flat sky or a flat wall has little texture to match, so its
 ring then waits for the next detection.
 
-### Speed sweep: drone model at 224x224 input (the default now)
+### Speed sweep: drone model at 224x224 input (superseded by section 11)
 
 Request (Chloe): make drone and person detection much faster; lower image quality is fine. Measured on phone A
 (airplane mode on, Wi-Fi off, 2 runtime threads, phone lying on a grey surface), median per tick over 45-60 s after
@@ -570,3 +575,137 @@ adb shell run-as com.chloeyeo.friendorfoe sh -c 'mkdir -p files/models/rtdetr_v2
 
 A phone that already stored the 320 pair keeps it until it is launched once with `--es detector dual` (which stores
 the new default), or with `--ei drone_input 320` for one run.
+
+---
+
+## 11. Drone detector v2: marie YOLO11n at 480 (the default now)
+
+Request (Chloe, 2026-10-10 evening): recognise our actual drone (a grey DJI Mini/Air-class quadcopter) fast and
+well, also while it moves. The RT-DETR v2 R50 drone model at 224 needed **1.3-4.4 s per frame** on phone A and
+missed the hand-held drone in a screenshot.
+
+**Decision: `marie-kjelberg/drone-detector` (YOLO11n, one class `drone`) at 480x480.** We benchmarked every
+drone-trained YOLO we could find, then tried the best ones live on phone A against the real drone in airplane
+mode. marie 480 was the most accurate in those live tests and is still quick: **275-345 ms per frame** on phone A,
+about 3.7-16x faster than the RT-DETR it replaces, with the 10 fps motion tracker following the box between detections.
+It also has the highest benchmark AP50 on our drone of every model/size that runs in about 40 ms on the laptop
+(0.540, below).
+
+### How it runs (still ClikaRT, still offline)
+
+ClikaRT modelverse only loads its own model families (RT-DETR, D-FINE, OWLv2…), so the YOLO runs through ClikaRT's
+low-level graph runtime from the same AAR (`io.clika.runtime`), in-process on the CPU:
+
+1. `OnnxModel.open(file)` → `compile(CompileOptions(sampleInputs = images[1,3,H,W]))` →
+   `graph.optimize(OptimizeOptions(DefaultsOptions(specialize = true)))` (2.3-4x faster on the CPU, same output) →
+   `finalizeGraph()`, then `graph.run` per frame.
+2. Pre-processing: letterbox the RGBA frame to H x W (grey 114), RGB, /255, NCHW float32.
+3. Output `[1, 4 + nc, N]`: cx, cy, w, h and sigmoided class scores. `YoloDecode` keeps rows >= 0.15, runs greedy
+   NMS (IoU 0.45), maps boxes back through the letterbox and **drops boxes over 60 % of the frame** (whole-frame
+   false alarms on grey clutter in the benchmark; a drone at arm's length fills about 27 %). The app keeps drones
+   >= **0.40** for marie (`ClassMap.DRONE_YOLO`), >= 0.20 for TomSmail files.
+4. Every round is a full-frame scan (a crop round costs as much as a full scan with this model), and a drone box is
+   dropped about 2.5 rounds after its last detection (1-5 s; about 1 s with marie 480) instead of a fixed 5 s.
+
+Code: `detect/OnnxYoloDetector.kt` (detector + `YoloDecode`, unit-tested in `YoloDecodeTest`), `ClassMap.yolo`,
+`DualDetector.yolo`, `Prefs.defaultDetectorConfig`, `RoundScheduler.droneStickyMs`. ClikaRT on the laptop
+(`clika-runtime-jvm`) gives the same boxes and scores as onnxruntime for these fp32 files. float16 and int8 are
+slower on the CPU (int8 3-4x), as with RT-DETR.
+
+### Measured on phone A (Galaxy A06, airplane mode, 2 runtime threads)
+
+| detector | ms per frame | detections/s | live test against our drone |
+|---|---|---|---|
+| RT-DETR v2 R50 drone, 224 (old default) | 1270-4400 | 0.2-0.8 | missed the hand-held drone |
+| marie YOLO11n 320 | 130-140 | 5-6 | scores only 0.13 on our hand-held drone |
+| **marie YOLO11n 480 (default)** | **275-345** | **about 3** | **best: most accurate in the live tests, still quick** |
+| marie YOLO11n 640 | 480-550 | about 1.8 | |
+| TomSmail YOLOv8n 256x416 | 152-172 | about 5 | weaker than marie 480 in the live test |
+| TomSmail YOLOv8n 640 | 505-540 | about 1.8 | phantom boxes at its default 0.20 floor; worked well at `--ef yolo_thr 0.3` |
+
+The phone heats up over a session and Samsung's security app scans every newly installed APK, so the same model
+can run 2-3x slower for a minute after an install; the numbers above are steady-state.
+
+### Benchmark: 11 drone YOLOs x 6 input sizes on our own drone
+
+Candidates: every drone-trained detector on Hugging Face we could export (no drone model exists in
+`onnx-community`; the COCO YOLOs only see drones as "kite"/"bird" at 0.24-0.43). Rejected outright: IRIS YOLOv8s
+(non-commercial, AP50 ≤ 0.11 here), Tuzelkhan YOLOv8 (military classes), jenx-5, danivelikova YOLO26n (event
+camera), alexandre196 (Shahed only), engdarwish YOLOv5s (0/4 real photos), all VisDrone/UAVDT models (they detect
+objects seen *from* a drone).
+
+- **Test set** (`evalset_user`, built from our drone): 2 real phone screenshots of our DJI drone (close-up on the
+  desk, held in the hand) + their mirror images, **240 synthetic images** (our drone cut out of those photos and
+  pasted at 480/240/120/60/30 px width with motion blur 0/9/21 px onto desk, hall, people and sky backgrounds),
+  **40 drone-free crops of our own backgrounds** (desk, laptop, hands without the drone) and 86 public negatives
+  (people, birds, kites, aeroplanes). Plus the earlier public set (110 drone boxes from `pathikg/drone-detection-dataset`).
+- **Speed**: ClikaRT 0.6.4 JVM on the laptop, 2 threads, `optimize()` on, p50 of 30 runs on a quiet machine. Measured,
+  the phone is about 7-10x slower than the laptop (marie 480: 35.8 ms laptop, 275-345 ms phone).
+- **Accuracy**: onnxruntime (same outputs as ClikaRT), 60 % big-box drop applied, threshold = lowest ≥ 0.15 that
+  keeps false alarms on our backgrounds ≤ 5 %. A hit is IoU ≥ 0.3 (or ≥ 0.2 with the box centre on the drone).
+
+| model | input | laptop ms | AP50 our drone | real photos hit | recall at 480/240/120/60/30 px | blur 21 px | our backgrounds FP | public negatives FP |
+|---|---|---|---|---|---|---|---|---|
+| marie YOLO11n | 320 | 16.2 | 0.379 | 1/4 | .65/.40/.35/.25/.17 | .29 | 0 % | 15 % |
+| marie YOLO11n | 416 | 27.7 | 0.467 | 0/4 | .83/.54/.48/.38/.23 | .34 | 5 % | 30 % |
+| **marie YOLO11n** | **480** | **35.8** | **0.540** | 1/4 | .81/.56/.46/.40/.31 | .34 | 5 % | 26 % |
+| marie YOLO11n | 640 | 60.8 | 0.614 | 3/4 | .88/.65/.52/.46/.35 | .38 | 2.5 % | 43 % |
+| TomSmail YOLOv8n | 256x416 | 19.4-20.1 | 0.461 | 3/4 | -/.60/.50/-/- | .47 | 2.5 % | 33 % |
+| TomSmail YOLOv8n | 320 | 19.1 | 0.440 | 3/4 | .88/.52/.44/.31/.23 | .47 | 5 % | 44 % |
+| TomSmail YOLOv8n | 416 | 31.6 | 0.457 | 3/4 | .88/.65/.50/.31/.29 | .50 | 2.5 % | 56 % |
+| TomSmail YOLOv8n | 480 | 41.4 | 0.498 | 2/4 | .81/.69/.56/.40/.33 | .49 | 5 % | 52 % |
+| TomSmail YOLOv8n | 640 | 71.3 | 0.522 | 4/4 | .73/.65/.58/.35/.40 | .49 | 2.5 % | 49 % |
+| SkyGuardAI YOLO11n | 480 | 36.5 | 0.484 | 2/4 | .81/.56/.48/.40/.23 | .41 | 5 % | 31 % |
+| SkyGuardAI YOLO11n | 640 | 61.2 | 0.562 | 0/4 | .77/.60/.46/.44/.31 | .40 | 5 % | 29 % |
+| sapoepsilon YOLO11s | 480 | 96.8 | 0.500 | 2/4 | .92/.56/.50/.35/.38 | .40 | 0 % | 34 % |
+| sapoepsilon YOLO11s | 640 | 170.2 | 0.538 | 3/4 | .92/.62/.54/.48/.40 | .42 | 2.5 % | 41 % |
+| RT-DETR v2 R50 (old) | 224 | 167.6 | 0.394 | 2/4 | .92/.54/.40/.29/.15 | .40 | 5 % | 73 % |
+| RT-DETR v2 R50 (old) | 320 | - | 0.472 | 2/4 | .92/.56/.54/.44/.38 | .49 | 2.5 % | 71 % |
+
+How to read it:
+- **marie 480 is the accuracy/speed sweet spot.** Its AP50 on our drone (0.540) beats every model/size at a similar
+  laptop cost (SkyGuard 480: 0.484, TomSmail 480: 0.498, TomSmail 416: 0.457), and it keeps false alarms on public
+  negatives low (26 % vs 33-56 % for TomSmail and 73 % for the old RT-DETR). Only slower configs score higher
+  (marie 640: 0.614, RT-DETR 640: 0.576, SkyGuard 640: 0.562).
+- **"Real photos hit" rests on 2 screenshots** (with the app's own orange boxes drawn on them), so one photo flips
+  1/4 to 3/4. The laptop benchmark ranked TomSmail first on that column; the live test on the phone, with the real
+  drone moving in front of the camera, picked marie 480. That live test decided.
+- **Small, far drones** (under about 60 px wide, roughly beyond 4-5 m with the 1280x720 frame) are unreliable for
+  every model. Hands and people are the main false-alarm risk for every model.
+- The full results (every model x size, threshold sweeps, drawn boxes) were produced in the session scratchpad
+  (`bench/DECISION.md`, `decide/table.json`, `viz/`); the scripts are not in the repo.
+
+### Run it and switch models
+
+Export (laptop, once; Ultralytics 8.4, fixed input, fp32, no NMS in the graph):
+
+```bash
+python -c "from ultralytics import YOLO; YOLO('yolo11n_drone.pt').export(format='onnx', opset=17, imgsz=480, simplify=True, dynamic=False)"
+```
+
+Push (debug build, app installed; `MSYS_NO_PATHCONV=1` in Git Bash):
+
+```bash
+adb push yolo11n_drone.onnx /data/local/tmp/drone_yolo11n_480.onnx
+adb shell run-as com.chloeyeo.friendorfoe sh -c 'mkdir -p files/models && cp /data/local/tmp/drone_yolo11n_480.onnx files/models/'
+```
+
+A fresh install uses `files/models/drone_yolo11n_480.onnx` when it is there, and the RT-DETR drone snapshot
+otherwise. Launch extras (stored until changed):
+
+| extra | runs |
+|---|---|
+| `--es detector yolo` | the default (marie 480) |
+| `--es detector yolo320` / `yolo416` / `yolo480` / `yolo640` | marie at that size (`drone_yolo11n_<N>.onnx`) |
+| `--es detector yolo:<name>` | any pushed `files/models/<name>.onnx`, e.g. `yolo:tom_640` |
+| `--ef yolo_thr 0.3` | a different drone floor for this run (stricter = fewer phantom boxes) |
+| `--es detector drone` | back to the RT-DETR drone model |
+
+```bash
+adb shell am start -S -n com.chloeyeo.friendorfoe/.MainActivity --ez demo false --es signal usb --es detector yolo
+```
+
+**Licences.** marie's weights are Ultralytics YOLO11, AGPL-3.0 (stated on the model card). TomSmail's card says
+CC-BY-4.0 (attribution: TomSmail/drone-yolo-v1), SkyGuardAI's MIT and sapoepsilon's Apache-2.0, but all of them
+are Ultralytics-trained weights carrying AGPL-3.0 metadata. No `.onnx` file is committed (`.gitignore` has
+`*.onnx`); the weights are adb-pushed like the RT-DETR snapshots.
