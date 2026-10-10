@@ -4,17 +4,24 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
 import com.chloeyeo.friendorfoe.signal.ReChecks
+import java.io.File
 
 /**
- * The app's settings (SharedPreferences). Defaults make a fresh install demo-able with no hardware:
- * fake detector, demo mode on, the README's physical-layer budgets.
+ * The app's settings (SharedPreferences). Defaults make a fresh install demo-able with no gadget:
+ * ClikaRT detector on the pushed model (D-11), demo mode on, the README's physical-layer budgets.
  */
 class Prefs(context: Context) {
     private val sp: SharedPreferences = context.getSharedPreferences("fof_prefs", Context.MODE_PRIVATE)
 
-    /** Which detector runs; `fake` until stream 1 switches the default to ClikaRT. */
+    /** The D-04 model directory: `<filesDir>/models/rtdetr_v2_r18vd` (the snapshot is copied there on the phone). */
+    private val defaultModelDir: String = File(context.filesDir, "models/rtdetr_v2_r18vd").path
+
+    /**
+     * Which detector runs; ClikaRT by default (D-11); `fake` or `http:` only when stored. An unreadable stored
+     * value still falls back to `fake` through [DetectorConfig.decode].
+     */
     var detectorConfig: DetectorConfig
-        get() = DetectorConfig.decode(sp.getString(KEY_DETECTOR, null))
+        get() = sp.getString(KEY_DETECTOR, null)?.let(DetectorConfig::decode) ?: DetectorConfig.ClikaRt(defaultModelDir)
         set(value) = sp.edit().putString(KEY_DETECTOR, value.encode()).apply()
 
     /** This observer's id (2 bytes on the wire). */
@@ -64,6 +71,10 @@ class Prefs(context: Context) {
     var dashboardBaseUrl: String
         get() = sp.getString(KEY_DASHBOARD_URL, "") ?: ""
         set(value) = sp.edit().putString(KEY_DASHBOARD_URL, value.trim()).apply()
+
+    /** The fresh-install detector, for the launch options and the H4 flip back from `http:`. */
+    val defaultClikaRtConfig: DetectorConfig
+        get() = DetectorConfig.ClikaRt(defaultModelDir)
 
     fun reChecksConfig(): ReChecks.Config = ReChecks.Config(rttBudgetMs, rssiFloorDbm, strictPhysical)
 
