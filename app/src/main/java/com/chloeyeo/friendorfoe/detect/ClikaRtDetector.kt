@@ -89,7 +89,7 @@ class ClikaRtDetector(
         } catch (e: Exception) {
             if (k.device == LoadKnobs.DEFAULT_DEVICE || (e !is ClikaRtException && e !is ModelverseException)) throw e
             // A GPU the runtime refuses (driver, backend missing): log the code name, then the same load on the CPU.
-            Log.w(TAG, "$name: device ${k.device} refused (${codeName(e)}), falling back to cpu")
+            Log.w(TAG, "$name: device ${k.device} refused (${codeName(e)}: ${e.message.orEmpty().take(200)}), falling back to cpu")
             openOn(dir, LoadKnobs.DEFAULT_DEVICE, k.dtype)
         }
         pipeline = p
