@@ -4,16 +4,18 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Size
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.chloeyeo.friendorfoe.app.DebugHooks
 import com.chloeyeo.friendorfoe.app.FofApplication
@@ -21,15 +23,16 @@ import com.chloeyeo.friendorfoe.app.LaunchOptions
 import com.chloeyeo.friendorfoe.camera.CameraController
 import com.chloeyeo.friendorfoe.detect.ClikaRtDetector
 import com.chloeyeo.friendorfoe.detect.Frame
-import com.chloeyeo.friendorfoe.ui.CameraScreen
+import com.chloeyeo.friendorfoe.ui.FriendOrFoeApp
 import com.chloeyeo.friendorfoe.ui.theme.FriendOrFoeTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The observer: asks for CAMERA, starts the runtime, binds the camera under the overlay and renders the
- * process-singleton coordinator's state (D-03). Kept small; the UI stream owns the screen layout.
+ * The observer: asks for CAMERA, starts the runtime, binds the camera under the overlay and hands the
+ * process-singleton coordinator's state (D-03) to [FriendOrFoeApp], which owns the screens. Live camera only when
+ * Settings → demo mode is off (`adb shell am start … --ez demo false` in debug builds).
  */
 class MainActivity : ComponentActivity() {
     private lateinit var app: FofApplication
@@ -46,6 +49,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // On stage: the screen never sleeps and the picture uses the whole display.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
         app = FofApplication.from(this)
         val launch = LaunchOptions.from(app, intent) // before app.coordinator: it may change the detector pref
         cameraController = CameraController(this, launch.analysisSize ?: Size(1280, 720))
@@ -67,12 +76,9 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             FriendOrFoeTheme {
-                val state by coordinator.state.collectAsState()
-                CameraScreen(
-                    state = state,
-                    onTapTrack = coordinator::challenge,
-                    onPreviewSize = coordinator::setPreviewSize,
-                    preview = { mod ->
+                FriendOrFoeApp(
+                    live = coordinator.state,
+                    cameraPreview = { mod ->
                         // If the preview hides the rings on a phone: implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                         AndroidView(
                             factory = { ctx ->
@@ -82,6 +88,9 @@ class MainActivity : ComponentActivity() {
                             modifier = mod.fillMaxSize(),
                         )
                     },
+                    onTapTrack = coordinator::challenge,
+                    onPreviewSize = coordinator::setPreviewSize,
+                    onReset = coordinator::reset,
                 )
             }
         }

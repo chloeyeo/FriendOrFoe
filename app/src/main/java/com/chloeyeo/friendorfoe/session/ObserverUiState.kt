@@ -54,8 +54,25 @@ data class SignalUi(
     val ageMs: Long,
 )
 
-/** One event log row; [t] is wall-clock milliseconds. */
-data class EventUi(val t: Long, val text: String)
+/**
+ * One event log row; [t] is wall-clock milliseconds and [text] the line as written. The optional fields carry the
+ * structured row the event log screen and the laptop dashboard show ({t, class, score, box, verdict, reason,
+ * roundTripMs}) and count from: a detection has [cls] and [trackId], a verdict also has [verdict]. A plain
+ * `EventUi(t, text)` (status lines) stays valid.
+ */
+data class EventUi(
+    val t: Long,
+    val text: String,
+    val trackId: Int? = null,
+    val cls: ObjClass? = null,
+    val score: Float? = null,
+    val box: BoxF? = null,
+    val verdict: VerdictKind? = null,
+    val reason: String? = null,
+    val droneId: String? = null,
+    val rssiDbm: Int? = null,
+    val roundTripMs: Long? = null,
+)
 
 /** The IFF state drawn on a drone box. */
 sealed interface IffState {

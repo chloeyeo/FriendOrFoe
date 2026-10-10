@@ -1,0 +1,31 @@
+/* Neutral observer palette. System fonts and local assets work offline. */
+:root {
+	--amber: #edb85c;
+	--green: #84d891;
+	--red: #ff7168;
+	--neutral: #d9dcdf;
+	--ink: #101113;
+	--surface-0: #101113;
+	--surface-1: #181a1d;
+	--surface-2: #23262a;
+	--line: #3b4046;
+	--text: #eeefed;
+	--muted: #a6abb1;
+	--accent: #d2d6db;
+	--mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+	color-scheme: dark;
+	font-family: var(--mono);
+	font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--surface-0); color: var(--text); }
+body { min-width: 320px; }
+button, input, select { font: inherit; border-radius: 0; }
+button { cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+button:disabled { cursor: default; }
+button, a { -webkit-tap-highlight-color: transparent; }
+a { color: var(--accent); text-underline-offset: 3px; }
+code { font-family: var(--mono); }
+::selection { background: var(--accent); color: var(--ink); }

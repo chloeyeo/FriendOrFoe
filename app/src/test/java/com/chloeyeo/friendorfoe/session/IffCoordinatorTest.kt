@@ -166,4 +166,25 @@ class IffCoordinatorTest {
         assertNull(coordinator.lock)
         assertTrue(coordinator.state.value.tracks.all { it.iff == IffState.Unchallenged })
     }
+
+    @Test
+    fun `reset clears tracks nonces and the log`() {
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource())
+        coordinator.tick(frame())
+        val droneId = coordinator.state.value.tracks.single { it.cls == ObjClass.DRONE }.id
+        coordinator.challenge(droneId)
+        assertEquals(droneId, coordinator.lock?.boxId)
+        coordinator.log("challenge sent · box 2")
+        val idsBefore = coordinator.state.value.tracks.map { it.id }
+
+        coordinator.reset()
+        val cleared = coordinator.state.value
+        assertTrue(cleared.tracks.isEmpty() && cleared.signal.isEmpty() && cleared.events.isEmpty())
+        assertEquals(0, coordinator.reChecks.seenCount)
+        assertNull(coordinator.lock)
+
+        coordinator.tick(frame())
+        // Fresh tracks get fresh ids, so an old verdict can never attach to a new object.
+        assertTrue(coordinator.state.value.tracks.none { it.id in idsBefore })
+    }
 }
