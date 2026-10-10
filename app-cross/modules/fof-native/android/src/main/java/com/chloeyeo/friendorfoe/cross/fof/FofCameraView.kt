@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.SystemClock
+import android.util.Base64
 import android.util.Log
 import android.util.Size
 import androidx.camera.core.CameraSelector
@@ -29,10 +30,17 @@ import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 
 /**
- * The camera pane (the native app's plan 02-04, `CameraController`): CameraX Preview in a `PreviewView`
- * (FILL_CENTER, the mapping `src/camera/frameTransform.ts` mirrors) plus one RGBA_8888 ImageAnalysis stream,
- * KEEP_ONLY_LATEST, 1280x720 at 16:9. The analyzer runs on [ClikaEngine.lane], so inference paces it: while a frame
- * is being detected CameraX keeps only the latest one, and frames inside [intervalMs] of the last run are dropped.
+ * The camera pane (the native app's `CameraController`): CameraX Preview in a `PreviewView` (FILL_CENTER, the
+ * mapping `src/camera/frameTransform.ts` mirrors) plus one RGBA_8888 ImageAnalysis stream, KEEP_ONLY_LATEST,
+ * 1280x720 at 16:9, analysed on its own camera thread:
+ *
+ * - every 100 ms a small upright gray frame ([GraySampler], 160 px wide) goes to TypeScript as `onGray`, for the
+ *   10 fps motion tracker that moves the rings between detections (the native app's motion tick);
+ * - when the runtime lane is idle and [intervalMs] has passed, the frame is copied upright and handed to
+ *   [ClikaEngine.lane] for detection, so inference taking seconds never stalls the gray frames.
+ *
+ * Both carry the camera sensor timestamp (`ts`, ms) so a detection that arrives seconds late is fast-forwarded on
+ * the gray frames buffered since its capture.
  *
  * Each analysed frame is rotated upright (`imageInfo.rotationDegrees`, landscape-locked activity) and then, by
  * [detector]: `clikart` runs [ClikaEngine.detect] in-process; `http` posts a JPEG to `clikart-cli serve`
@@ -44,6 +52,7 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
   override val shouldUseAndroidLayout = true
 
   private val onFrame by EventDispatcher<Map<String, Any?>>()
+  private val onGray by EventDispatcher<Map<String, Any?>>()
   private val onCameraError by EventDispatcher<Map<String, Any?>>()
 
   private val previewView = PreviewView(context).apply {
@@ -62,7 +71,10 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
   private var provider: ProcessCameraProvider? = null
   private var bound = false
   private var lastRun = 0L
+  private var lastGray = 0L
+  @Volatile private var busy = false
   private var lastThumbnail = 0L
+  private val cameraExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "fof-camera") }
   private val thumbnailExecutor = Executors.newSingleThreadExecutor { r -> Thread(r, "fof-thumbnail") }
 
   init {
@@ -86,6 +98,7 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
 
   fun release() {
     unbind()
+    cameraExecutor.shutdown()
     thumbnailExecutor.shutdown()
   }
 
@@ -117,7 +130,7 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
           .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
           .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
           .build()
-        analysis.setAnalyzer(ClikaEngine.lane) { proxy -> analyze(proxy) }
+        analysis.setAnalyzer(cameraExecutor) { proxy -> analyze(proxy) }
         p.unbindAll()
         p.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
         bound = true
@@ -137,55 +150,92 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
     bound = false
   }
 
-  /** Lane thread. Always closes the proxy. */
+  /** Camera thread. Always closes the proxy. */
   private fun analyze(proxy: ImageProxy) {
     try {
+      if (!active) return
       val now = SystemClock.elapsedRealtime()
-      if (!active || now - lastRun < intervalMs) return
+      val tsMs = proxy.imageInfo.timestamp / 1_000_000.0
+      if (detector != "none" && now - lastGray >= GRAY_INTERVAL_MS) {
+        lastGray = now
+        emitGray(proxy, tsMs)
+      }
+      if (busy || now - lastRun < intervalMs) return
       lastRun = now
       val frame = upright(proxy)
-      val w = frame.width
-      val h = frame.height
-      val t0 = SystemClock.elapsedRealtime()
-      var rows: List<Map<String, Any>>? = null
-      var body: String? = null
-      var error: String? = null
-      var detected = false
-      try {
-        when (detector) {
-          "clikart" -> if (ClikaEngine.isOpen) {
-            val rgba = ByteArray(w * h * 4)
-            frame.copyPixelsToBuffer(ByteBuffer.wrap(rgba))
-            rows = ClikaEngine.detect(rgba, w, h)
-            detected = true
-          }
-          "http" -> if (serveUrl.isNotBlank()) {
-            body = postToServe(frame, serveUrl)
-            detected = true
-          }
+      busy = true
+      ClikaEngine.lane.execute {
+        try {
+          detectOnLane(frame, tsMs, now)
+        } finally {
+          frame.recycle()
+          busy = false
         }
-      } catch (e: Throwable) {
-        error = ClikaEngine.noteFor(e)
       }
-      val ms = SystemClock.elapsedRealtime() - t0
-      maybePostThumbnail(frame, now)
-      frame.recycle()
-      val payload = mapOf(
-        "width" to w,
-        "height" to h,
-        "detected" to detected,
-        "ms" to ms,
-        "rows" to rows,
-        "body" to body,
-        "error" to error,
-        "t" to System.currentTimeMillis().toDouble(),
-      )
-      post { onFrame(payload) }
     } catch (e: Throwable) {
       Log.w(TAG, "analyze failed: ${ClikaEngine.noteFor(e)}")
     } finally {
       proxy.close()
     }
+  }
+
+  private fun emitGray(proxy: ImageProxy, tsMs: Double) {
+    val plane = proxy.planes[0]
+    val g = GraySampler.sample(plane.buffer, proxy.width, proxy.height, plane.rowStride, plane.pixelStride, proxy.imageInfo.rotationDegrees)
+    val payload = mapOf(
+      "width" to g.width,
+      "height" to g.height,
+      "step" to g.step,
+      "frameWidth" to g.frameWidth,
+      "frameHeight" to g.frameHeight,
+      "t" to tsMs,
+      "luma" to Base64.encodeToString(g.luma, Base64.NO_WRAP),
+    )
+    post { onGray(payload) }
+  }
+
+  /** Runtime lane. */
+  private fun detectOnLane(frame: Bitmap, tsMs: Double, startedAt: Long) {
+    val w = frame.width
+    val h = frame.height
+    val t0 = SystemClock.elapsedRealtime()
+    var rows: List<Map<String, Any>>? = null
+    var body: String? = null
+    var error: String? = null
+    var note: String? = null
+    var detected = false
+    try {
+      when (detector) {
+        "clikart" -> if (ClikaEngine.isOpen) {
+          val rgba = ByteArray(w * h * 4)
+          frame.copyPixelsToBuffer(ByteBuffer.wrap(rgba))
+          rows = ClikaEngine.detect(rgba, w, h)
+          note = ClikaEngine.timingNote()
+          detected = true
+        }
+        "http" -> if (serveUrl.isNotBlank()) {
+          body = postToServe(frame, serveUrl)
+          detected = true
+        }
+      }
+    } catch (e: Throwable) {
+      error = ClikaEngine.noteFor(e)
+    }
+    val ms = SystemClock.elapsedRealtime() - t0
+    maybePostThumbnail(frame, startedAt)
+    val payload = mapOf(
+      "width" to w,
+      "height" to h,
+      "detected" to detected,
+      "ms" to ms,
+      "rows" to rows,
+      "body" to body,
+      "error" to error,
+      "note" to note,
+      "ts" to tsMs,
+      "t" to System.currentTimeMillis().toDouble(),
+    )
+    post { onFrame(payload) }
   }
 
   /** `toBitmap()` handles the row stride; rotate so boxes come back in upright-frame pixels. */
@@ -273,5 +323,6 @@ class FofCameraView(context: Context, appContext: AppContext) : ExpoView(context
 
   private companion object {
     const val TAG = "FoF"
+    const val GRAY_INTERVAL_MS = 100L
   }
 }

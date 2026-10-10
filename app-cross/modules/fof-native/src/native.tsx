@@ -38,7 +38,22 @@ export interface CameraFrameEvent {
   /** The raw `/v1/detections` body (detector `http`); parsed in TypeScript. */
   body: string | null;
   error: string | null;
+  /** Per-model timing of this frame on Android's dual detector, e.g. `drone 6.1 s + person 1.4 s`. */
+  note?: string | null;
+  /** Capture time on the gray frames' clock (ms), for fast-forwarding a late detection. */
+  ts?: number;
   t: number;
+}
+
+/** A small upright gray frame for the 10 fps motion tracker; `luma` is base64, `t` the capture time (ms). */
+export interface GrayEvent {
+  width: number;
+  height: number;
+  step: number;
+  frameWidth: number;
+  frameHeight: number;
+  t: number;
+  luma: string;
 }
 
 export interface CameraErrorEvent {
@@ -54,14 +69,16 @@ export interface FofCameraViewProps {
   thumbnailUrl: string;
   active: boolean;
   onFrame?: (event: { nativeEvent: CameraFrameEvent }) => void;
+  onGray?: (event: { nativeEvent: GrayEvent }) => void;
   onCameraError?: (event: { nativeEvent: CameraErrorEvent }) => void;
   style?: StyleProp<ViewStyle>;
 }
 
 declare class FofRuntimeModule extends NativeModule<Record<string, never>> {
-  defaultModelDir(): string;
+  /** Android: the dual detector's snapshot dirs; iPhone: a description of the bundled models. */
+  defaultModelDirs(): { drone: string; person: string };
   requestCameraPermission(): Promise<{ granted: boolean; status: string }>;
-  openDetector(modelDir: string, threads: number): Promise<OpenDetectorResult>;
+  openDetector(droneDir: string, personDir: string, threads: number): Promise<OpenDetectorResult>;
   closeDetector(): Promise<void>;
 }
 

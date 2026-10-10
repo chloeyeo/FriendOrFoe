@@ -15,6 +15,8 @@ import {
 } from '../core/types';
 import { ReChecks } from '../signal/reChecks';
 import type { ChallengeRequest, SignalEvent, SignalSource } from '../signal/signal';
+import type { GrayFrame } from '../track/grayFrame';
+import { MotionTracker, type Seed } from '../track/motionTracker';
 import { Tracker } from '../track/tracker';
 
 /** The tapped box frozen for the challenge window (track/BoxLock.kt); `rect` is in frame pixels. */
@@ -29,6 +31,7 @@ export interface CoordinatorOptions {
   signalSource: SignalSource;
   reChecks?: ReChecks;
   tracker?: Tracker;
+  motion?: MotionTracker;
   /** Wall clock, ms (locks, countdowns, event times). */
   clock?: () => number;
   /** Monotonic ms for the phone-side round trip. */
@@ -49,8 +52,9 @@ type Listener = (state: ObserverUiState) => void;
 /**
  * The session (session/IffCoordinator.kt, plus what plans 02-03 and Phase 5 add): frames in, [ObserverUiState] out.
  *
- * - `tick(frame)`: detections -> sticky tracker -> preview coordinates; new tracks are logged as detection rows; the
- *   locked box stays on screen at its frozen rect while the detector has lost it (DET-06).
+ * - `tick(frame)`: detections (fast-forwarded from their capture time) -> sticky tracker -> preview coordinates; new
+ *   tracks are logged as detection rows; the locked box stays on screen while the detector has lost it (DET-06).
+ * - `motionTick(gray)`: the 10 fps motion tracker moves every drawn box between detections (track/MotionTracker.kt).
  * - `challenge(boxId)`: refuses while a window is open or for anything but a live drone track; locks the box for
  *   10 s, shows the countdown, asks the [SignalSource], measures the phone-side round trip, runs [ReChecks] (and the
  *   accepted-id list), then draws the verdict on that box, adds a gadget-panel row and a structured event. No answer
@@ -64,6 +68,7 @@ export class IffCoordinator {
   private state: ObserverUiState;
   private listeners = new Set<Listener>();
   private readonly tracker: Tracker;
+  private readonly motion: MotionTracker;
   readonly reChecks: ReChecks;
   private readonly clock: () => number;
   private readonly monotonic: () => number;
@@ -73,6 +78,9 @@ export class IffCoordinator {
   previewMode: 'fill' | 'fit';
   private previewWidth = 0;
   private previewHeight = 0;
+  /** The analysis frame size the boxes live in (from the last detection or gray frame). */
+  private frameWidth = 0;
+  private frameHeight = 0;
   private transform: FrameTransform = { scale: 1, offsetX: 0, offsetY: 0 };
   private lastTick = 0;
   private iffById = new Map<number, IffState>();
@@ -91,6 +99,7 @@ export class IffCoordinator {
     this.signalSource = options.signalSource;
     this.reChecks = options.reChecks ?? new ReChecks();
     this.tracker = options.tracker ?? new Tracker();
+    this.motion = options.motion ?? new MotionTracker();
     this.clock = options.clock ?? (() => Date.now());
     this.monotonic = options.monotonic ?? (() => (globalThis.performance?.now ? globalThis.performance.now() : Date.now()));
     this.challengerId = options.challengerId ?? 7;
@@ -130,35 +139,86 @@ export class IffCoordinator {
     this.publish({ events: this.events });
   }
 
+  /**
+   * One detection frame. A frame that carries its capture time is first fast-forwarded on the gray frames buffered
+   * since (the native app's IffCoordinator.tick): its boxes are matched where the camera saw them and carried to where
+   * the objects are now, the tracked boxes are moved to their motion positions, then the tracker matches the two.
+   */
   tick(frame: FrameResult): void {
     const now = this.clock();
-    this.tracker.update(frame.detections, now);
+    let detections = frame.detections;
+    if (frame.timestampMs !== undefined) {
+      const seeds = this.motion.fastForward(frame.timestampMs, detections.map((d) => d.box));
+      detections = detections.map((d, i) => ({ ...d, box: seeds[i].box }));
+      for (const t of this.tracker.tracks) {
+        const m = this.motion.box(t.id);
+        if (m) this.tracker.moveTo(t.id, m.box);
+      }
+      const seen = this.tracker.update(detections, now);
+      const seedByBox = new Map<BoxF, Seed>();
+      detections.forEach((d, i) => {
+        if (!seedByBox.has(d.box)) seedByBox.set(d.box, seeds[i]);
+      });
+      for (const t of seen) {
+        const seed = seedByBox.get(t.box);
+        if (seed) {
+          this.motion.assign(t.id, seed);
+          seedByBox.delete(t.box);
+        }
+      }
+    } else {
+      this.tracker.update(detections, now);
+    }
+    this.frameWidth = frame.width;
+    this.frameHeight = frame.height;
+
+    const fps = this.lastTick > 0 && now > this.lastTick ? 1000 / (now - this.lastTick) : 0;
+    this.lastTick = now;
+    this.publishTracks(now, true, { ...this.state.status, msPerFrame: Math.round(frame.msPerFrame ?? 0), fps, modelReady: true });
+  }
+
+  /** One 10 fps gray frame: moves every tracked box (the native app's motionTick); detections are left alone. */
+  motionTick(gray: GrayFrame): void {
+    this.motion.push(gray);
+    this.frameWidth = gray.frameWidth;
+    this.frameHeight = gray.frameHeight;
+    if (this.motion.ids.size === 0 && !this._lock) return;
+    this.publishTracks(this.clock(), false);
+  }
+
+  /** The boxes as the user sees them: the motion position when there is one, else the tracker's box. */
+  private publishTracks(now: number, announce: boolean, status?: StatusUi): void {
     this.transform =
-      this.previewWidth > 0 && this.previewHeight > 0
-        ? frameTransform(frame.width, frame.height, this.previewWidth, this.previewHeight, this.previewMode)
+      this.previewWidth > 0 && this.previewHeight > 0 && this.frameWidth > 0 && this.frameHeight > 0
+        ? frameTransform(this.frameWidth, this.frameHeight, this.previewWidth, this.previewHeight, this.previewMode)
         : { scale: 1, offsetX: 0, offsetY: 0 };
 
     // The window's verdict comes from challenge(); here an expired lock only stops pinning the box.
     if (this._lock && now >= this._lock.until) this._lock = null;
 
-    // An unconfirmed drone (fewer matched frames than confirmHits) stays in the tracker but is not shown yet.
-    const live = this.tracker.tracks.filter((t) => t.cls !== 'DRONE' || t.hits >= this.confirmHits || t.id === this._lock?.boxId);
-    const keep = new Set(this.tracker.tracks.map((t) => t.id));
+    const all = this.tracker.tracks;
+    const keep = new Set(all.map((t) => t.id));
     if (this._lock) keep.add(this._lock.boxId);
     for (const id of [...this.iffById.keys()]) if (!keep.has(id)) this.iffById.delete(id);
     for (const id of [...this.announced]) if (!keep.has(id)) this.announced.delete(id);
+    this.motion.retain(keep);
 
-    for (const t of live) {
-      if (t.misses !== 0 || this.announced.has(t.id)) continue;
-      this.announced.add(t.id);
-      const name = t.cls.toLowerCase();
-      this.addEvent({ t: now, text: `${name} detected · box ${t.id}`, trackId: t.id, cls: t.cls, score: t.score, box: toPreview(this.transform, t.box) });
+    // An unconfirmed drone (fewer matched frames than confirmHits) stays in the tracker but is not shown yet.
+    const live = all.filter((t) => t.cls !== 'DRONE' || t.hits >= this.confirmHits || t.id === this._lock?.boxId);
+    const shown = (id: number, fallback: BoxF) => toPreview(this.transform, this.motion.box(id)?.box ?? fallback);
+
+    if (announce) {
+      for (const t of live) {
+        if (t.misses !== 0 || this.announced.has(t.id)) continue;
+        this.announced.add(t.id);
+        this.addEvent({ t: now, text: `${t.cls.toLowerCase()} detected · box ${t.id}`, trackId: t.id, cls: t.cls, score: t.score, box: shown(t.id, t.box) });
+      }
     }
 
     const tracks: TrackUi[] = live.map((t) => ({
       id: t.id,
       cls: t.cls,
-      box: toPreview(this.transform, t.box),
+      box: shown(t.id, t.box),
       iff: this.iffById.get(t.id) ?? UNCHALLENGED,
       score: t.score,
     }));
@@ -167,19 +227,12 @@ export class IffCoordinator {
       tracks.push({
         id: lock.boxId,
         cls: 'DRONE',
-        box: toPreview(this.transform, lock.rect),
+        box: shown(lock.boxId, lock.rect),
         iff: this.iffById.get(lock.boxId) ?? { kind: 'CHALLENGED', until: lock.until, windowMs: this.windowMs },
         score: 0,
       });
     }
-
-    const fps = this.lastTick > 0 && now > this.lastTick ? 1000 / (now - this.lastTick) : 0;
-    this.lastTick = now;
-    this.publish({
-      tracks,
-      events: this.events,
-      status: { ...this.state.status, msPerFrame: Math.round(frame.msPerFrame ?? 0), fps, modelReady: true },
-    });
+    this.publish(status ? { tracks, events: this.events, status } : { tracks, events: this.events });
   }
 
   /** Tap -> lock -> challenge -> answer -> re-check -> verdict. Returns false when the tap is refused. */
@@ -190,10 +243,11 @@ export class IffCoordinator {
     if (!track) return false;
 
     const until = now + this.windowMs;
-    const lock: BoxLock = { boxId, rect: track.box, until };
+    const rect = this.motion.box(boxId)?.box ?? track.box;
+    const lock: BoxLock = { boxId, rect, until };
     this._lock = lock;
     this.iffById.set(boxId, { kind: 'CHALLENGED', until, windowMs: this.windowMs });
-    const previewBox = toPreview(this.transform, track.box);
+    const previewBox = toPreview(this.transform, rect);
     this.addEvent({ t: now, text: `challenge sent · box ${boxId}` });
     this.publish({
       tracks: this.state.tracks.map((t) => (t.id === boxId ? { ...t, iff: this.iffById.get(boxId)! } : t)),
@@ -261,6 +315,7 @@ export class IffCoordinator {
     this.inFlight?.abort();
     this.inFlight = null;
     this.tracker.reset();
+    this.motion.reset();
     this.reChecks.reset();
     this.events = [];
     this.iffById.clear();

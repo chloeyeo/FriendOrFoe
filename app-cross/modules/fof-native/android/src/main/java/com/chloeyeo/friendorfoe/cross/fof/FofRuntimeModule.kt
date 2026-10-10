@@ -17,18 +17,18 @@ class FofRuntimeModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("FofRuntime")
 
-    Function("defaultModelDir") {
-      ClikaEngine.defaultModelDir(context)
+    Function("defaultModelDirs") {
+      ClikaEngine.defaultModelDirs(context)
     }
 
     AsyncFunction("requestCameraPermission") { promise: Promise ->
       Permissions.askForPermissionsWithPermissionsManager(appContext.permissions, promise, Manifest.permission.CAMERA)
     }
 
-    /** Loads the runtime (license probe) and opens the model on the lane; rejects with the ClikaRT code name. */
-    AsyncFunction("openDetector") { modelDir: String, threads: Int ->
+    /** Loads the runtime (license probe) and opens both models on the lane; rejects with the ClikaRT code name. */
+    AsyncFunction("openDetector") { droneDir: String, personDir: String, threads: Int ->
       try {
-        ClikaEngine.onLane { ClikaEngine.open(context, modelDir, threads) }
+        ClikaEngine.onLane { ClikaEngine.open(context, droneDir, personDir, threads) }
       } catch (e: Throwable) {
         val cause = (e as? java.util.concurrent.ExecutionException)?.cause ?: e
         throw CodedException("FOF_RUNTIME", ClikaEngine.noteFor(cause), cause)
@@ -40,7 +40,7 @@ class FofRuntimeModule : Module() {
     }
 
     View(FofCameraView::class) {
-      Events("onFrame", "onCameraError")
+      Events("onFrame", "onGray", "onCameraError")
       Prop("detector") { view: FofCameraView, value: String -> view.detector = value }
       Prop("serveUrl") { view: FofCameraView, value: String -> view.serveUrl = value }
       Prop("intervalMs") { view: FofCameraView, value: Int -> view.intervalMs = value.toLong().coerceAtLeast(100L) }

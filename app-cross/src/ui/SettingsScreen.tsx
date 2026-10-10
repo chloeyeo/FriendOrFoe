@@ -34,7 +34,7 @@ const KEYBOARD: Record<NumKey, KeyboardTypeOptions> = {
 
 interface Props {
   settings: Settings;
-  modelDirHint: string;
+  modelDirHints: { drone: string; person: string };
   onSave: (s: Settings) => void;
   onCancel: () => void;
   /** Phone-sized: tighter padding; fields stack in one column on a narrow window. */
@@ -42,7 +42,7 @@ interface Props {
 }
 
 /** Settings over the stored values (the native app's SettingsScreen), validated before Save. */
-export function SettingsScreen({ settings, modelDirHint, onSave, onCancel, compact = false }: Props) {
+export function SettingsScreen({ settings, modelDirHints, onSave, onCancel, compact = false }: Props) {
   const { width } = useWindowDimensions();
   const oneColumn = width < 560;
 
@@ -109,9 +109,14 @@ export function SettingsScreen({ settings, modelDirHint, onSave, onCancel, compa
             <Segmented options={detectors} value={draft.detector} onChange={(v) => set('detector', v)} />
           </Field>
           {draft.detector === 'clikart' ? (
-            <Field label="Model directory" hint={`blank = ${modelDirHint}`}>
-              <TextInput style={styles.input} value={draft.modelDir} onChangeText={(t) => set('modelDir', t)} autoCapitalize="none" autoCorrect={false} placeholder={modelDirHint} placeholderTextColor={colors.muted} />
-            </Field>
+            <>
+              <Field label="Drone model directory" hint={`blank = ${modelDirHints.drone}`}>
+                <TextInput style={styles.input} value={draft.droneModelDir} onChangeText={(t) => set('droneModelDir', t)} autoCapitalize="none" autoCorrect={false} placeholder={modelDirHints.drone} placeholderTextColor={colors.muted} />
+              </Field>
+              <Field label="Person model directory" hint={`blank = ${modelDirHints.person}`}>
+                <TextInput style={styles.input} value={draft.personModelDir} onChangeText={(t) => set('personModelDir', t)} autoCapitalize="none" autoCorrect={false} placeholder={modelDirHints.person} placeholderTextColor={colors.muted} />
+              </Field>
+            </>
           ) : null}
           {draft.detector === 'http' ? (
             <Field label="Serve URL" error={errors.serveUrl} hint="clikart-cli serve --offline on the laptop">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
-import { FofRuntime, hasNativeCamera, type CameraErrorEvent, type CameraFrameEvent } from '../../modules/fof-native';
+import { FofRuntime, hasNativeCamera, type CameraErrorEvent, type CameraFrameEvent, type GrayEvent } from '../../modules/fof-native';
 import type { EventUi, RawDetection } from '../core/types';
 import { toDetections } from '../detect/dedup';
 import { labelIdFor } from '../detect/labelMap';
@@ -9,13 +9,18 @@ import { FakeDetector } from '../detect/fakeDetector';
 import { EventClient } from '../net/eventClient';
 import { eventBody, frameBody, planEvents } from '../net/eventJson';
 import { IffCoordinator } from '../session/iffCoordinator';
+import { grayFromEvent } from '../track/grayFrame';
 import { FakeSignalSource } from '../signal/fakeSignalSource';
 import { UsbGadgetSignalSource, type GadgetLinkState } from '../signal/usbGadgetSignalSource';
 import { probeOffline } from './offline';
 import { acceptedIds, type Settings } from './settings';
 
 export function detectorName(s: Settings): string {
-  if (s.detector === 'clikart') return 'clikart:rtdetr_v2_r18vd';
+  if (s.detector === 'clikart') {
+    // The native app's DualDetector name; the default dirs are the 320x320-input snapshots.
+    const at320 = !s.droneModelDir.trim() || s.droneModelDir.trim().replace(/\/+$/, '').endsWith('_320');
+    return `clikart:drone-rahul+dfine-s${at320 ? ' @320' : ''}`;
+  }
   if (s.detector === 'http') return 'http:' + s.serveUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
   if (s.detector === 'coreml') return 'coreml:yolo11n+drone-yolo11s';
   return 'fake';
@@ -137,8 +142,8 @@ export function useSession(settings: Settings) {
     const ticker = setInterval(() => {
       if (!cancelled) note(`model loading… ${Math.round((Date.now() - started) / 1000)} s`, false);
     }, 1000);
-    const dir = settings.modelDir.trim() || FofRuntime.defaultModelDir();
-    FofRuntime.openDetector(dir, settings.threads)
+    const defaults = FofRuntime.defaultModelDirs();
+    FofRuntime.openDetector(settings.droneModelDir.trim() || defaults.drone, settings.personModelDir.trim() || defaults.person, settings.threads)
       .then((r) => {
         if (cancelled) return;
         clearInterval(ticker);
@@ -156,7 +161,7 @@ export function useSession(settings: Settings) {
     };
     // Thresholds are applied per frame; they do not reload the model.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [c, settings.detector, settings.modelDir, settings.threads, settings.serveUrl, settings.intervalMs]);
+  }, [c, settings.detector, settings.droneModelDir, settings.personModelDir, settings.threads, settings.serveUrl, settings.intervalMs]);
 
   const thresholds = { person: settings.personThreshold, drone: settings.droneThreshold };
   const thresholdsRef = useRef(thresholds);
@@ -185,14 +190,17 @@ export function useSession(settings: Settings) {
         c.setStatus((s) => ({ ...s, modelNote: (err as Error).message.slice(0, 80) }));
         return;
       }
-      if (frameFailed.current) {
+      if (frameFailed.current || e.note) {
         frameFailed.current = false;
-        c.setStatus((s) => ({ ...s, modelNote: loadNote.current }));
+        c.setStatus((s) => ({ ...s, modelNote: e.note ?? loadNote.current }));
       }
-      c.tick({ width: e.width, height: e.height, detections: toDetections(rows, thresholdsRef.current), msPerFrame: e.ms });
+      c.tick({ width: e.width, height: e.height, detections: toDetections(rows, thresholdsRef.current), msPerFrame: e.ms, timestampMs: e.ts });
     },
     [c],
   );
+
+  // 10 fps gray frames: the motion tracker moves the rings between detections (the native app's motion tick).
+  const onGray = useCallback((e: GrayEvent) => c.motionTick(grayFromEvent(e)), [c]);
 
   const onCameraError = useCallback((e: CameraErrorEvent) => c.setStatus((s) => ({ ...s, modelNote: `${e.code} · ${e.message}` })), [c]);
 
@@ -246,5 +254,5 @@ export function useSession(settings: Settings) {
     usbSource?.connect().catch((e: Error) => c.log(`gadget · ${e.message}`));
   }, [c, usbSource]);
 
-  return { state, onFrame, onCameraError, onPreviewLayout, challenge, reset, gadget, connectGadget, cameraGranted };
+  return { state, onFrame, onGray, onCameraError, onPreviewLayout, challenge, reset, gadget, connectGadget, cameraGranted };
 }

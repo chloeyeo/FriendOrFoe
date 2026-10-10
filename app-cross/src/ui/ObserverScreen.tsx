@@ -35,6 +35,7 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
           intervalMs: settings.intervalMs,
           thumbnailUrl: settings.dashboardUrl.trim(),
           onFrame: session.onFrame,
+          onGray: session.onGray,
           onCameraError: session.onCameraError,
         }
       : null;
@@ -121,7 +122,7 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
         <View style={[StyleSheet.absoluteFill, padding, styles.sheet]}>
           <SettingsScreen
             settings={settings}
-            modelDirHint={FofRuntime?.defaultModelDir() ?? 'models/rtdetr_v2_r18vd'}
+            modelDirHints={FofRuntime?.defaultModelDirs() ?? { drone: 'models/rtdetr_v2_drone_rahul_320', person: 'models/dfine_small_coco_320' }}
             compact={layout.compact}
             onCancel={() => setSettingsOpen(false)}
             onSave={(s) => {

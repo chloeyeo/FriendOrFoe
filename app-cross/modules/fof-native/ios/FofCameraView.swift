@@ -5,12 +5,15 @@ import UIKit
 /**
  The iPhone camera pane, the counterpart of the Android `FofCameraView`: an `AVCaptureVideoPreviewLayer` with
  aspect-fill (the FILL_CENTER mapping `src/camera/frameTransform.ts` mirrors) and one BGRA video-data output at
- 1280x720. Frames are rotated upright by the device's rotation coordinator, so boxes come back in upright-frame
- pixels. Late frames are discarded and frames inside `intervalMs` of the last run are skipped, so inference paces
- itself. `onFrame` carries the same `{width, height, detected, ms, rows, error, t}` as on Android.
+ 1280x720, rotated upright by the device's rotation coordinator. Like Android:
+
+ - every 100 ms a 160 px wide gray frame goes to TypeScript as `onGray` for the 10 fps motion tracker;
+ - when the detection queue is idle and `intervalMs` has passed, the frame is detected on that queue, and `onFrame`
+   carries `{width, height, detected, ms, rows, error, ts, t}`, `ts` being the capture time on the gray frames' clock.
  */
 final class FofCameraView: ExpoView, AVCaptureVideoDataOutputSampleBufferDelegate {
   private let onFrame = EventDispatcher()
+  private let onGray = EventDispatcher()
   private let onCameraError = EventDispatcher()
 
   private let session = AVCaptureSession()
@@ -18,6 +21,9 @@ final class FofCameraView: ExpoView, AVCaptureVideoDataOutputSampleBufferDelegat
   private let previewLayer: AVCaptureVideoPreviewLayer
   private let sessionQueue = DispatchQueue(label: "fof.camera.session")
   private let frameQueue = DispatchQueue(label: "fof.camera.frames")
+  private let detectQueue = DispatchQueue(label: "fof.camera.detect")
+  private var busy = false
+  private var lastGray: CFTimeInterval = 0
   private var configured = false
   private var rotation: AVCaptureDevice.RotationCoordinator?
   private var rotationObservers: [NSKeyValueObservation] = []
@@ -123,12 +129,30 @@ final class FofCameraView: ExpoView, AVCaptureVideoDataOutputSampleBufferDelegat
 
   /// Frame queue.
   func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+    guard active, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
     let now = CACurrentMediaTime()
-    guard active, now - lastRun >= Double(intervalMs) / 1000.0, let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+    let tsMs = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer)) * 1000
+    if detector != "none" && now - lastGray >= 0.1 {
+      lastGray = now
+      if let gray = FofCameraView.gray(buffer, tsMs: tsMs) {
+        DispatchQueue.main.async { [weak self] in self?.onGray(gray) }
+      }
+    }
+    guard !busy, now - lastRun >= Double(intervalMs) / 1000.0 else { return }
     lastRun = now
+    busy = true
+    detectQueue.async { [weak self] in
+      guard let self else { return }
+      defer { self.frameQueue.async { self.busy = false } }
+      self.detect(buffer, tsMs: tsMs)
+    }
+  }
+
+  /// Detection queue. The pixel buffer is retained by the closure, so it stays valid here.
+  private func detect(_ buffer: CVPixelBuffer, tsMs: Double) {
     let width = CVPixelBufferGetWidth(buffer)
     let height = CVPixelBufferGetHeight(buffer)
-    var payload: [String: Any] = ["width": width, "height": height, "detected": false, "ms": 0, "t": Date().timeIntervalSince1970 * 1000]
+    var payload: [String: Any] = ["width": width, "height": height, "detected": false, "ms": 0, "ts": tsMs, "t": Date().timeIntervalSince1970 * 1000]
     switch detector {
     case "coreml":
       if FofDetector.shared.isOpen {
@@ -147,6 +171,41 @@ final class FofCameraView: ExpoView, AVCaptureVideoDataOutputSampleBufferDelegat
       break
     }
     DispatchQueue.main.async { [weak self] in self?.onFrame(payload) }
+  }
+
+  /// A 160 px wide gray frame of a BGRA buffer: mean luma (77 R + 150 G + 29 B) >> 8 of the 2x2 block at the start of
+  /// each step cell, the Android GraySampler's arithmetic; base64 so it crosses the bridge as one string.
+  private static func gray(_ buffer: CVPixelBuffer, tsMs: Double, targetWidth: Int = 160) -> [String: Any]? {
+    guard CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_32BGRA else { return nil }
+    CVPixelBufferLockBaseAddress(buffer, .readOnly)
+    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+    guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+    let width = CVPixelBufferGetWidth(buffer)
+    let height = CVPixelBufferGetHeight(buffer)
+    let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
+    let step = max(1, width / max(1, targetWidth))
+    let gw = width / step
+    let gh = height / step
+    let block = step >= 2 ? 2 : 1
+    let src = base.assumingMemoryBound(to: UInt8.self)
+    var out = [UInt8](repeating: 0, count: gw * gh)
+    for gy in 0..<gh {
+      for gx in 0..<gw {
+        var sum = 0
+        for r in 0..<block {
+          let row = src + (gy * step + r) * rowBytes
+          for c in 0..<block {
+            let p = row + (gx * step + c) * 4
+            sum += (77 * Int(p[2]) + 150 * Int(p[1]) + 29 * Int(p[0])) >> 8
+          }
+        }
+        out[gy * gw + gx] = UInt8(sum / (block * block))
+      }
+    }
+    return [
+      "width": gw, "height": gh, "step": step, "frameWidth": width, "frameHeight": height, "t": tsMs,
+      "luma": Data(out).base64EncodedString(),
+    ]
   }
 
   private func emitError(_ code: String, _ message: String) {

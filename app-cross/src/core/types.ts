@@ -130,4 +130,6 @@ export interface FrameResult {
   detections: Detection[];
   /** Inference time of this frame, when the detector measured it. */
   msPerFrame?: number;
+  /** When the frame was captured, on the gray frames' clock: a late detection is fast-forwarded from here. */
+  timestampMs?: number;
 }

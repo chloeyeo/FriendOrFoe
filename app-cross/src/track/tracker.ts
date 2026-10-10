@@ -81,6 +81,15 @@ export class Tracker {
     return this.live.filter((t) => t.misses === 0);
   }
 
+  /**
+   * Moves live track `id` to `box` without touching its id, score, misses or last-seen time (Tracker.kt `moveTo`):
+   * the 10 fps motion tracker keeps boxes current between detections, so the next IoU match compares like with like.
+   */
+  moveTo(id: number, box: BoxF): void {
+    const i = this.live.findIndex((t) => t.id === id);
+    if (i >= 0) this.live[i] = { ...this.live[i], box };
+  }
+
   /** Forgets every track; ids keep counting up so an old ring is never confused with a new object. */
   reset(): void {
     this.live = [];

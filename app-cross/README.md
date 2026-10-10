@@ -17,8 +17,9 @@ the same shape.
 | Piece | Native app (owner, state on `main`) | Here |
 |---|---|---|
 | Contracts (`Detection`, `ObserverUiState`, `SignalEvent`) | `detect/`, `session/`, `signal/` (Phase 1, done) | `src/core/types.ts` |
-| Class map, thresholds, IoU de-dup, `/v1/detections` parser | `LabelMap`, `Dedup`, `DetectionsJson` (02-01, done) | `src/detect/` |
-| Sticky tracker (drone 5 s, person 1.5 s, wall clock) | `Tracker` (02-03, planned) | `src/track/tracker.ts` |
+| Class map, thresholds, IoU de-dup, `/v1/detections` parser, dual drone + person detector | `LabelMap`, `ClassMap`, `Dedup`, `DetectionsJson`, `DualDetector` (done) | `src/detect/` + `ClikaEngine.kt` |
+| Sticky tracker (drone 5 s, person 1.5 s, wall clock) | `Tracker` (02-03, done) | `src/track/tracker.ts` |
+| 10 fps motion tracking between detections, late-detection fast-forward | `MotionTracker`, `GrayFrame`, `GraySampler`, `IffCoordinator.motionTick` (done) | `src/track/motionTracker.ts`, `grayFrame.ts`, `GraySampler.kt`, the iPhone gray sampler |
 | 10 s box lock, lock-aware tick | `IffCoordinator.challenge` (02-03, planned) | `src/session/iffCoordinator.ts` |
 | Tap → gadget → re-check → verdict → ring | `IffCoordinator` (Phase 5 / #23, planned) | `src/session/iffCoordinator.ts` |
 | Re-checks (nonce ledger, RTT budget, RSSI floor) | `ReChecks` (stream 2, done) | `src/signal/reChecks.ts` |
@@ -30,6 +31,12 @@ the same shape.
 | OFFLINE badge rule | `OfflineRule` (02-01, done) | `src/app/offline.ts` |
 | Dashboard mirror (events, tracks, thumbnail) | `EventClient`, `EventJson`, `EventDiff` (stream 3, done) | `src/net/` + the camera view's thumbnail post |
 | UI | Compose `ui/` | `src/ui/`, following `web/src/lib` (palette, square layout, result list) |
+
+**Tracking between detections (ported from main's 10 fps motion work).** Phone A needs seconds per detection, so
+the camera pane also sends a 160 px gray frame every 100 ms (`onGray`). `src/track/motionTracker.ts` (a port of
+`track/MotionTracker.kt`, with its tests) moves every ring by template matching on those frames. A detection is
+fast-forwarded from its capture time to now before it is matched, so rings follow the object instead of jumping to
+where it was seconds ago. Detection runs on its own thread, so the gray frames never wait for inference.
 
 **Demo mode differs from the native app.** In this app, "simulated" means only the fake detector and the fake
 gadget running through the real session. There is no scripted `DemoScenario` screen. The detector and the signal
@@ -100,14 +107,16 @@ app, debug and release, with Android Studio's default `~/.android/debug.keystore
 `installDebug` uses, so once phone A gets a seat, one seat covers both apps. Build both on the same machine, or point
 `FOF_SIGNING_KEYSTORE` at the native app's keystore.
 
-Push the model snapshot once. It is the same snapshot the native app uses, at this app's own path:
+Push the two model snapshots once. They are the native app's dual detector, the RahulKate drone RT-DETR v2 and
+D-FINE S for people, both at 320x320 input, placed at this app's own path:
 
 ```bash
-adb push <snapshot>/. /sdcard/Android/data/com.chloeyeo.friendorfoe.cross/files/models/rtdetr_v2_r18vd/
+adb push <rtdetr_v2_drone_rahul_320>/. /sdcard/Android/data/com.chloeyeo.friendorfoe.cross/files/models/rtdetr_v2_drone_rahul_320/
+adb push <dfine_small_coco_320>/. /sdcard/Android/data/com.chloeyeo.friendorfoe.cross/files/models/dfine_small_coco_320/
 ```
 
-`config.json`, `model.safetensors` and `preprocessor_config.json` must be in that directory. Settings → Model
-directory overrides the path.
+Each directory needs `config.json`, `model.safetensors` and `preprocessor_config.json`. Settings → Drone model
+directory and Person model directory override the paths.
 
 ## iPhone build (on-device Core ML, not ClikaRT)
 

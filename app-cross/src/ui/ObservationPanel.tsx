@@ -1,7 +1,7 @@
 import { memo, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
 
-import { FofCameraView, type CameraErrorEvent, type CameraFrameEvent } from '../../modules/fof-native';
+import { FofCameraView, type CameraErrorEvent, type CameraFrameEvent, type GrayEvent } from '../../modules/fof-native';
 import type { StatusUi, TrackUi } from '../core/types';
 import { compactLabel, droneAt, tagFor } from './overlayStyle';
 import { colors, mono, toneColor } from './theme';
@@ -13,6 +13,7 @@ export interface CameraProps {
   intervalMs: number;
   thumbnailUrl: string;
   onFrame: (e: CameraFrameEvent) => void;
+  onGray: (e: GrayEvent) => void;
   onCameraError: (e: CameraErrorEvent) => void;
 }
 
@@ -101,6 +102,7 @@ export function ObservationPanel({ tracks, status, camera, onPreviewLayout, onTa
             intervalMs={camera.intervalMs}
             thumbnailUrl={camera.thumbnailUrl}
             onFrame={(e) => camera.onFrame(e.nativeEvent)}
+            onGray={(e) => camera.onGray(e.nativeEvent)}
             onCameraError={(e) => camera.onCameraError(e.nativeEvent)}
           />
         ) : null}

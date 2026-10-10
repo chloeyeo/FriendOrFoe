@@ -17,6 +17,12 @@ describe('LabelMap', () => {
     expect(classOf(67)).toBeNull(); // cell phone
   });
 
+  it("maps Android's dual ClikaRT rows: the drone model's drone, the person model's person only", () => {
+    expect(classOf(labelIdFor('clika-drone', 'drone'))).toBe('DRONE');
+    expect(classOf(labelIdFor('clika-person', 'person'))).toBe('PERSON');
+    expect(labelIdFor('clika-person', 'bird')).toBe(-1); // D-FINE's other COCO labels are dropped
+  });
+
   it('maps the iPhone Core ML labels: person and bird from COCO, drones from FofDrone only', () => {
     expect(labelIdFor('coco', 'person')).toBe(0);
     expect(classOf(labelIdFor('coco', 'bird'))).toBe('BIRD');

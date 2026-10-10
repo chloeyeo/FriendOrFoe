@@ -6,8 +6,8 @@ public final class FofRuntimeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("FofRuntime")
 
-    Function("defaultModelDir") { () -> String in
-      "bundled Core ML (FofCoco + FofDrone)"
+    Function("defaultModelDirs") { () -> [String: String] in
+      ["drone": "bundled Core ML FofDrone", "person": "bundled Core ML FofCoco"]
     }
 
     AsyncFunction("requestCameraPermission") { (promise: Promise) in
@@ -17,7 +17,7 @@ public final class FofRuntimeModule: Module {
     }
 
     /// Loads the bundled detectors; the arguments exist for Android's ClikaRT and are ignored here.
-    AsyncFunction("openDetector") { (_ modelDir: String, _ threads: Int) -> [String: Any] in
+    AsyncFunction("openDetector") { (_ droneDir: String, _ personDir: String, _ threads: Int) -> [String: Any] in
       try FofDetector.shared.open()
     }
 
@@ -26,7 +26,7 @@ public final class FofRuntimeModule: Module {
     }
 
     View(FofCameraView.self) {
-      Events("onFrame", "onCameraError")
+      Events("onFrame", "onGray", "onCameraError")
 
       Prop("detector") { (view: FofCameraView, value: String) in
         view.detector = value

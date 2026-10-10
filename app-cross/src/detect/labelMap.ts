@@ -5,6 +5,8 @@ import type { ObjClass } from '../core/types';
  *
  * - RT-DETR v2 / COCO ids (ClikaRT on Android, the laptop serve, FofCoco on iPhone): 0 person -> PERSON,
  *   14 bird -> BIRD, 4 aeroplane and 33 kite -> DRONE (the COCO proxies for a small flying object).
+ * - Android's dual ClikaRT detector (the native app's DualDetector): the RahulKate drone RT-DETR `drone` (id 3000)
+ *   -> DRONE and the D-FINE S person model's COCO `person` -> PERSON; its other COCO labels are dropped.
  * - The iPhone's drone detector FofDrone: `drone` (id 2000) -> DRONE. On the Core ML path the COCO model gives only
  *   person and bird: its airplane/kite proxies found no drone FofDrone missed and added false ones.
  *
@@ -18,12 +20,14 @@ export const DEFAULT_DRONE_THRESHOLD = 0.28;
 
 const PERSON_IDS = new Set([0]);
 const BIRD_IDS = new Set([14]);
-const DRONE_IDS = new Set([4, 33, 2000]);
+const DRONE_IDS = new Set([4, 33, 2000, 3000]);
 
-/** Core ML rows carry the model tag and label name; this gives them the numeric id the map is keyed on. */
+/** Rows tagged with their model (Core ML on iPhone, the dual ClikaRT detector on Android) map by label name. */
 const COREML_IDS: Record<string, Record<string, number>> = {
   coco: { person: 0, bird: 14 },
   drone: { drone: 2000 },
+  'clika-drone': { drone: 3000 },
+  'clika-person': { person: 0 },
 };
 
 export function labelIdFor(model: string, label: string): number {

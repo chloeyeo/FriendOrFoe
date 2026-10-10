@@ -15,8 +15,10 @@ export type SignalKindSetting = 'usb' | 'fake';
  */
 export interface Settings {
   detector: DetectorKind;
-  /** Empty = the app's default snapshot directory (`<externalFilesDir>/models/rtdetr_v2_r18vd`). */
-  modelDir: string;
+  /** Android dual detector snapshot dirs; empty = `<externalFilesDir>/models/rtdetr_v2_drone_rahul_320` and
+   * `dfine_small_coco_320` (the native app's defaults at 320x320 input). */
+  droneModelDir: string;
+  personModelDir: string;
   /** `clikart-cli serve` on the laptop, the H4 contingency. */
   serveUrl: string;
   threads: number;
@@ -37,10 +39,13 @@ export interface Settings {
 
 /** FofDrone's floor (see detect/labelMap.ts): 12/13 real drones kept, 4/40 drone-free images still fire. */
 const IOS_DRONE_THRESHOLD = 0.6;
+/** The native app's floor for the RahulKate drone model (ClassMap.DRONE_RAHUL). */
+const ANDROID_DRONE_THRESHOLD = 0.3;
 
 export const DEFAULT_SETTINGS: Settings = {
   detector: hasNativeCamera ? onDeviceDetector : 'fake',
-  modelDir: '',
+  droneModelDir: '',
+  personModelDir: '',
   serveUrl: 'http://192.168.43.100:8000',
   threads: 2,
   intervalMs: Platform.OS === 'ios' ? 500 : 1000,
@@ -50,7 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   challengerId: 7,
   acceptedDroneIds: 'RQ-07',
   personThreshold: DEFAULT_PERSON_THRESHOLD,
-  droneThreshold: Platform.OS === 'ios' ? IOS_DRONE_THRESHOLD : DEFAULT_DRONE_THRESHOLD,
+  droneThreshold: Platform.OS === 'ios' ? IOS_DRONE_THRESHOLD : ANDROID_DRONE_THRESHOLD,
   rttBudgetMs: 2500,
   rssiFloorDbm: -70,
   strictPhysical: false,
