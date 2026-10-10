@@ -24,11 +24,12 @@ import kotlinx.coroutines.flow.update
  *
  * TODO(integration lead / Chloe, Phase 5): challenge(boxId) steps 2-3:
  * 2. `req = ChallengeRequest(boxId, prefs.challengerId, now / 1000)`; `t0 = SystemClock.elapsedRealtime()`;
- *    launch the signal source's `challenge(req)` on a coroutine scope with a 10 s timeout; each
- *    [SignalEvent.Status] goes to the event log; the [SignalEvent.Answer] goes through
- *    `reChecks.check(answer, roundTripMs)` into [IffState.Verdict] on the locked box, a [SignalUi] row (newest
- *    first) and an event line; no answer in time -> `Verdict(UNKNOWN, "no response", ...)`;
- * 3. post the verdict to the laptop dashboard through `net/EventClient` (fire-and-forget), then release the lock.
+ *    launch `signalSource.challenge(req)` on a coroutine scope with a 10 s timeout; each [SignalEvent.Status]
+ *    goes to the event log; the [SignalEvent.Answer] goes through `reChecks.check(answer, roundTripMs)` into
+ *    [IffState.Verdict] on the locked box, a [SignalUi] row (newest first) and an event line; no answer in time
+ *    -> `Verdict(UNKNOWN, "no response", ...)`;
+ * 3. log the verdict as a structured [EventUi] (cls, box, verdict, reason, …) and release the lock; the UI mirrors
+ *    the event log to the laptop dashboard (`FriendOrFoeApp` → `net/EventClient`), so do not post it here too.
  *
  * Threading: [tick] runs on the runtime lane; [challenge] and [setPreviewSize] are called from the main thread (a
  * tap, a layout pass); [state] is read from the UI. The tracker, the lock and the per-track IFF states are touched
@@ -177,6 +178,21 @@ class IffCoordinator(
                     events = eventLog.snapshot(),
                 )
             }
+        }
+    }
+
+    /**
+     * The Reset button (OBS-10): forgets the tracks, the nonce ledger, every verdict, the lock and the event log,
+     * so a rehearsal and the live run start clean. Track ids keep counting up (see [Tracker.reset]).
+     */
+    fun reset() {
+        synchronized(stateLock) {
+            tracker.reset()
+            reChecks.reset()
+            eventLog.clear()
+            iffById.clear()
+            lock = null
+            _state.update { it.copy(tracks = emptyList(), signal = emptyList(), events = emptyList()) }
         }
     }
 

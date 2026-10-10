@@ -119,9 +119,9 @@ EEPROM for the pre-placed key. Docs: https://docs.arduino.cc and https://arduino
 | `detect/` | 1 | `Detector` interface, `Detection`, `ObjClass` (PERSON, DRONE), `LabelMap` (RT-DETR `labelId` 0 → person, 4/14/33 → drone), `ClikaRtDetector`, `HttpDetector`, `FakeDetector`, `Detectors.create(config)` |
 | `track/` | 1 | `Tracker` (IoU matching, stable ids), `BoxLock` (freeze the tapped box for the 10 s window) |
 | `signal/` | 2 | `SignalSource` interface, `UsbGadgetSignalSource` (USB CDC serial, newline-delimited JSON), `ReChecks` (pure Kotlin: nonce-never-seen ledger, round-trip budget, RSSI floor; unit-tested), `FakeSignalSource` (scripted answers for every verdict) |
-| `session/` | lead | `IffCoordinator` (tap → challenge → wait for answer → re-check → verdict → events), `ObserverUiState` (the only thing the UI renders), `EventLog` |
-| `net/` | 1 | `EventClient` (fire-and-forget POST to the laptop dashboard), `HttpDetector` transport |
-| `ui/` | 3 | `CameraScreen` + `OverlayPainter` (rings, tags, countdown; skeleton version exists and renders `DemoScenario`), `StatusStrip` (inside CameraScreen for now); to build: `GadgetPanel` (connection, RSSI, last answers), `SettingsScreen`, `EventLogScreen`, theme |
+| `session/` | lead | `IffCoordinator` (tap → challenge → wait for answer → re-check → verdict → events; `reset()` for the Reset button), `ObserverUiState` (the only thing the UI renders), `EventLog` |
+| `net/` | 1, 3 | `EventClient` + `EventJson` + `EventDiff` (fire-and-forget POSTs to the laptop dashboard; the UI mirrors the event log and the drawn tracks), `HttpDetector` transport |
+| `ui/` | 3 | `FriendOrFoeApp` (app root: demo mode or live state, screens, dashboard mirror), `CameraScreen` (preview slot + `overlay/` rings, tags, countdown, hit test), `status/StatusStrip` + `OfflineMonitor`, `gadget/GadgetPanel`, `log/EventLogScreen` + counts, `settings/SettingsScreen` (over `Prefs`), `DemoBackdrop`, theme |
 
 ### The three contracts (frozen in code since the skeleton commit; change only via a `[shared]` PR)
 
@@ -164,7 +164,10 @@ data class TrackUi(val id: Int, val cls: ObjClass, val box: BoxF /* preview pixe
 data class StatusUi(val detectorName: String, val msPerFrame: Long, val fps: Float, val modelReady: Boolean,
                     val offline: Boolean, val gadgetConnected: Boolean, val rssiDbm: Int?)
 data class SignalUi(val droneId: String?, val verdict: VerdictKind?, val reason: String?, val rssiDbm: Int?, val roundTripMs: Long?, val ageMs: Long)
-data class EventUi(val t: Long, val text: String)
+data class EventUi(val t: Long, val text: String,                 // a status line needs only these two;
+                   val trackId: Int? = null, val cls: ObjClass? = null, val score: Float? = null, val box: BoxF? = null,
+                   val verdict: VerdictKind? = null, val reason: String? = null, val droneId: String? = null,
+                   val rssiDbm: Int? = null, val roundTripMs: Long? = null)   // a detection / verdict row fills these
 sealed interface IffState {
     data object Unchallenged : IffState
     data class Challenged(val until: Long, val windowMs: Long = 10_000L) : IffState   // countdown arc = remaining / windowMs

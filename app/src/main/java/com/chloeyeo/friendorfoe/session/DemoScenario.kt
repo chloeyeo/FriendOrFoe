@@ -51,11 +51,13 @@ object DemoScenario {
 
         val events = ArrayList<EventUi>()
         var t = now - 12_000L
-        fun log(text: String): List<EventUi> {
+        fun log(text: String, event: (Long) -> EventUi = { EventUi(it, text) }): List<EventUi> {
             t += 1_500L
-            events.add(0, EventUi(t, text))
+            events.add(0, event(t))
             return events.toList()
         }
+        fun detected(id: Int, cls: ObjClass, score: Float, box: BoxF): (Long) -> EventUi =
+            { EventUi(it, "${cls.name.lowercase()} detected · box $id", id, cls, score, box) }
 
         val signal = ArrayList<SignalUi>()
         fun answered(droneId: String?, verdict: VerdictKind, reason: String?, rssi: Int?, ms: Long?): List<SignalUi> {
@@ -65,8 +67,8 @@ object DemoScenario {
 
         val out = ArrayList<ObserverUiState>(7)
 
-        log("person detected · box $PERSON_ID")
-        val appeared = log("drone detected · box $DRONE_ID")
+        log("person detected · box $PERSON_ID", detected(PERSON_ID, ObjClass.PERSON, 0.91f, personBox))
+        val appeared = log("drone detected · box $DRONE_ID", detected(DRONE_ID, ObjClass.DRONE, 0.42f, droneBox))
         out += ObserverUiState(tracks(IffState.Unchallenged), status, emptyList(), appeared)
 
         val challenged = log("challenge sent · box $DRONE_ID · nonce 3f9a…")
@@ -74,7 +76,9 @@ object DemoScenario {
 
         fun verdictState(kind: VerdictKind, reason: String?, droneId: String?, rssi: Int?, ms: Long?, line: String): ObserverUiState {
             val sig = answered(droneId, kind, reason, rssi, ms)
-            val ev = log(line)
+            val ev = log(line) {
+                EventUi(it, line, DRONE_ID, ObjClass.DRONE, 0.42f, droneBox, kind, reason, droneId, rssi, ms)
+            }
             return ObserverUiState(
                 tracks(IffState.Verdict(kind, reason, droneId, rssi, ms)),
                 status.copy(rssiDbm = rssi ?: status.rssiDbm),

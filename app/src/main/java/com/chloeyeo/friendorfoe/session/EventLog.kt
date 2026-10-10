@@ -10,8 +10,10 @@ class EventLog(private val capacity: Int = 200) {
 
     val size: Int get() = synchronized(items) { items.size }
 
-    fun add(t: Long, text: String): EventUi = synchronized(items) {
-        val event = EventUi(t, text)
+    fun add(t: Long, text: String): EventUi = add(EventUi(t, text))
+
+    /** Adds a structured row (detection or verdict, see [EventUi]). */
+    fun add(event: EventUi): EventUi = synchronized(items) {
         items.addFirst(event)
         while (items.size > capacity) items.removeLast()
         event
