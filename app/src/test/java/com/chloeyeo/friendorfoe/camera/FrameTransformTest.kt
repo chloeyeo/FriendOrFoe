@@ -49,6 +49,21 @@ class FrameTransformTest {
     }
 
     @Test
+    fun `A06 screen - 1280x720 into 1600x720`() {
+        val t = FrameTransform(1280, 720, 1600, 720)
+        assertEquals(1.25f, t.scale, eps)
+        assertEquals(0f, t.offsetX, eps)
+        assertEquals(-90f, t.offsetY, eps) // (720 - 720 * 1.25) / 2
+
+        // a box at the left frame edge, full height (D-10 edge check)
+        val edge = t.toPreview(BoxF(0f, 0f, 100f, 720f))
+        assertEquals(0f, edge.left, eps)
+        assertEquals(125f, edge.right, eps)
+        assertEquals(-90f, edge.top, eps)
+        assertEquals(810f, edge.bottom, eps)
+    }
+
+    @Test
     fun `toFrame inverts toPreview`() {
         val t = FrameTransform(1280, 720, 2400, 1080)
         val box = t.toPreview(BoxF(300f, 200f, 400f, 260f))
