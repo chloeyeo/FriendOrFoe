@@ -26,8 +26,14 @@ branches and a fake implementation of the other streams' interfaces, so nobody w
 | **2 · Challenge-response (질의응답)** | Ihan | @angmusae2015 | `firmware/` — Arduino (C/C++): the `iff` library (codecs, HMAC-SHA256, key derivation, nonce ledger, verifier, position gate), the `reader` and `drone` sketches (radio exchange, attack modes, USB serial to the phone), the `selftest` sketch that replays the JSON vectors; `app/.../signal` (Kotlin: USB gadget link, phone-side timing/RSSI/nonce re-checks); `docs/PROTOCOL.md`, `docs/GADGET_LINK.md` | `selftest` prints PASS for every vector over USB-C; reader gadget answers a challenge over USB with verdict + RSSI + ms (H7) |
 | **3 · UI frontend** | Yoo Jongho | @ujon | `app/.../ui` (camera overlay, status strip, signal/gadget panel, settings, event log), `laptop/dashboard`, screenshots and demo video | Overlay renders rings and tags from a fake scenario, no camera needed (H4) |
 | **Integration lead** | Chloe | @chloeyeo | wiring in `app/.../session`, demo rehearsals, `.planning/` (GSD docs) | End-to-end green ring on the devices (H10) |
+| **Design (optional)** | Dawud | @dawuddaj | `docs/design/` (visual language, mockups, overlay spec, dashboard layout, icon, pitch visuals) and the Compose theme tokens; the UI stream implements. Falls back to stream 3 if Dawud is not available | Palette, type scale and screen mockups (H4) |
 
 If you want to swap streams, say so in the group chat before H1 and edit this table in a `docs:` PR.
+
+**Work tracking:** every deliverable is a GitHub issue with acceptance criteria, labelled by stream
+(`detect`, `iff`, `ui`, `design`, `shared`, `docs`, `integration`) and grouped into the milestones
+*H4 live boxes* → *H10 MVP* → *H14 demo-ready* → *H20 submission*. Issue #36 is the tracking list: when
+every issue in it is closed, the MVP is finished and the demo is rehearsed.
 
 ---
 
@@ -317,6 +323,6 @@ app/        Android app (Compose, CameraX, ClikaRT AAR, USB serial) — packages
 firmware/   Arduino: iff/ (library: src/fof1.h, src/fof1.cpp, library.properties), reader/, drone/, selftest/
 laptop/     dashboard/app.py (FastAPI), gadget_cli.py (talk to the gadget from the laptop), serve + model push scripts
 eval/       10+ test images, ground truth JSON, run_eval.py, gen_vectors.py (JSON vectors + vectors.h)
-docs/       PROTOCOL.md, GADGET_LINK.md, PITCH.md (script + Q&A card)
+docs/       PROTOCOL.md, GADGET_LINK.md, PITCH.md (script + Q&A card), DESIGN.md, design/ (mockups, specs)
 .planning/  GSD planning docs (ROADMAP, REQUIREMENTS, research)
 ```
