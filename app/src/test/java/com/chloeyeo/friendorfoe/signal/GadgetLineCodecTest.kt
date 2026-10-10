@@ -7,7 +7,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
+import java.io.File
 
 /** Ihan's reader lines (firmware/reader/reader.ino) through [GadgetLineCodec], mostly from the captured fixtures. */
 class GadgetLineCodecTest {
@@ -161,5 +163,27 @@ class GadgetLineCodecTest {
             """{"event":"RESULT","request_id":"r1","response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":1,"rssi":900}""",
         )
         for (line in bad) assertThrows(line, IllegalArgumentException::class.java) { GadgetLineCodec.parse(line) }
+    }
+
+    /** Every JSON line in docs/GADGET_LINK.md parses as the event it names. */
+    @Test
+    fun `every reader line in GADGET_LINK md parses`() {
+        val doc = listOf(File("../docs/GADGET_LINK.md"), File("docs/GADGET_LINK.md")).firstOrNull { it.isFile }
+        assumeTrue("docs/GADGET_LINK.md not found from ${File(".").absolutePath}", doc != null)
+        val lines = doc!!.readLines().map { it.trim() }.filter { it.startsWith("{\"event\"") && it.endsWith("}") }
+        assertTrue("expected the documented reader lines, got ${lines.size}", lines.size >= 8)
+        val kinds = HashSet<String>()
+        for (line in lines) {
+            val event = GadgetLineCodec.parse(line)
+            assertTrue(line, event != null && event !is ReaderEvent.Other)
+            kinds += event!!.javaClass.simpleName
+        }
+        assertTrue(kinds.toString(), kinds.containsAll(listOf("Ack", "State", "Packet", "Result", "Status")))
+        val commands = doc.readLines().map { it.trim() }.filter { it.startsWith("QUERY ") || it.startsWith("STATUS ") }
+        assertTrue(commands.isNotEmpty())
+        for (c in commands) {
+            val (verb, id) = c.split(" ", limit = 2)
+            assertEquals(c, if (verb == "QUERY") GadgetLineCodec.encodeQuery(id) else GadgetLineCodec.encodeStatus(id))
+        }
     }
 }
