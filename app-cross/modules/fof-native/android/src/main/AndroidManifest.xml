@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.CAMERA" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+  <!-- The reader gadget plugs into USB-C; the phone is USB host over OTG. -->
+  <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+</manifest>
