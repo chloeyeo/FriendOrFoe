@@ -65,11 +65,11 @@ class Prefs(context: Context) {
         set(value) = sp.edit().putBoolean(KEY_DEMO_MODE, value).apply()
 
     /**
-     * Where a tap goes on the live camera: AUTO (the USB gadget when one is connected, else the fake), USB (gadget
-     * only; none attached -> `UNKNOWN · no gadget`), FAKE. Read on every tap.
+     * Where a tap goes on the live camera: USB (the default, gadget only; none attached -> `UNKNOWN · no gadget`),
+     * AUTO (opt-in: the USB gadget when one is connected, else the fake), FAKE. Read on every tap.
      */
     var signalChoice: SignalChoice
-        get() = SignalChoice.parse(sp.getString(KEY_SIGNAL_CHOICE, null)) ?: SignalChoice.AUTO
+        get() = SignalChoice.parse(sp.getString(KEY_SIGNAL_CHOICE, null)) ?: SignalChoice.DEFAULT
         set(value) = sp.edit().putString(KEY_SIGNAL_CHOICE, value.name).apply()
 
     /** The scripted answer the fake signal source gives (HONEST -> FRIEND, REPLAY -> FOE replayed nonce, ...). */

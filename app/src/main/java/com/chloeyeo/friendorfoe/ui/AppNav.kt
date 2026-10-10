@@ -70,7 +70,9 @@ fun FriendOrFoeApp(
 
     // The OFFLINE badge always reflects this phone's real network, in demo mode too.
     val offline by remember(context) { OfflineMonitor.flow(context) }.collectAsState(initial = false)
-    val state = sessionState.copy(status = sessionState.status.copy(offline = offline))
+    // FAKE SIGNAL badge: on the live camera, a tap right now would go to the scripted source (FAKE, or AUTO unplugged).
+    val fakeSignal = !demo && settings.signalChoice.usesFake(sessionState.status.gadgetConnected)
+    val state = sessionState.copy(status = sessionState.status.copy(offline = offline, fakeSignal = fakeSignal))
     DashboardMirror(state, size, settings.dashboardBaseUrl)
 
     val reset: () -> Unit = {

@@ -30,7 +30,19 @@ class SwitchingSignalSourceTest {
     }
 
     @Test
-    fun `AUTO uses the gadget when connected and the fake otherwise`() {
+    fun `the default fails closed to the gadget, and only AUTO unplugged or FAKE use the fake`() {
+        assertEquals(SignalChoice.USB, SignalChoice.DEFAULT)
+        assertTrue(!SignalChoice.USB.usesFake(gadgetConnected = false))
+        assertTrue(!SignalChoice.USB.usesFake(gadgetConnected = true))
+        assertTrue(SignalChoice.AUTO.usesFake(gadgetConnected = false))
+        assertTrue(!SignalChoice.AUTO.usesFake(gadgetConnected = true))
+        assertTrue(SignalChoice.FAKE.usesFake(gadgetConnected = true))
+        val (d, usb, _) = switching(SignalChoice.DEFAULT, connected = false)
+        assertSame(usb, d.pick())
+    }
+
+    @Test
+    fun `AUTO (opt-in) uses the gadget when connected and the fake otherwise`() {
         val (a, usbA, fakeA) = switching(SignalChoice.AUTO, connected = true)
         assertSame(usbA, a.pick())
         val (b, _, fakeB) = switching(SignalChoice.AUTO, connected = false)

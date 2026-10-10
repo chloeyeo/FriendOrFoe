@@ -119,9 +119,9 @@ fun SettingsScreen(
                 Choice(SignalChoice.entries, form.signalChoice, { it.label }) { form = form.copy(signalChoice = it) }
                 Text(
                     when (form.signalChoice) {
-                        SignalChoice.AUTO -> "USB gadget when attached, otherwise the fake signal source"
+                        SignalChoice.AUTO -> "USB gadget when attached, otherwise the fake (verdicts tagged FAKE)"
                         SignalChoice.USB -> "USB gadget only (reader on USB OTG); none attached = UNKNOWN · no gadget"
-                        SignalChoice.FAKE -> "Fake signal source only (scripted answers)"
+                        SignalChoice.FAKE -> "Fake signal source only (scripted answers, tagged FAKE)"
                     },
                     color = OnSurfaceMuted,
                     style = MaterialTheme.typography.bodyMedium,

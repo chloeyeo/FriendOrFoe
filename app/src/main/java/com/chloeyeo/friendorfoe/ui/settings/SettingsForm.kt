@@ -22,7 +22,7 @@ data class SettingsValues(
     val strictPhysical: Boolean,
     val demoMode: Boolean,
     val dashboardBaseUrl: String,
-    val signalChoice: SignalChoice = SignalChoice.AUTO,
+    val signalChoice: SignalChoice = SignalChoice.DEFAULT,
     val fakeMode: FakeMode = FakeMode.HONEST,
 ) {
     fun writeTo(p: Prefs) {
@@ -97,7 +97,7 @@ data class SettingsForm(
     val dashboardBaseUrl: String,
     val droneModelDir: String = DEFAULT_DUAL_DRONE_DIR,
     val personModelDir: String = DEFAULT_DUAL_PERSON_DIR,
-    val signalChoice: SignalChoice = SignalChoice.AUTO,
+    val signalChoice: SignalChoice = SignalChoice.DEFAULT,
     val fakeMode: FakeMode = FakeMode.HONEST,
 ) {
     sealed interface Result {

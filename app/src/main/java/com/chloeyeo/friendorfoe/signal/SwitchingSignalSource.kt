@@ -2,18 +2,32 @@ package com.chloeyeo.friendorfoe.signal
 
 import kotlinx.coroutines.flow.Flow
 
-/** Which source a tap goes to (Settings → Gadget, `--es signal auto|usb|fake`). */
+/**
+ * Which source a tap goes to (Settings → Gadget, `--es signal auto|usb|fake`). The default is [USB] (fail closed,
+ * OBS-02); [AUTO] and [FAKE] are explicit opt-ins, and every verdict they produce from the fake is tagged `FAKE` on
+ * the ring, the status strip, the gadget panel and the event log.
+ */
 enum class SignalChoice(val label: String) {
-    /** The USB gadget when one is connected, otherwise the fake (marked `(fake)` in the log and the gadget panel). */
+    /** Opt-in: the USB gadget when one is connected, otherwise the fake (tagged `FAKE`). */
     AUTO("Auto"),
 
-    /** The USB gadget only; no gadget -> `UNKNOWN · no gadget` at once (OBS-02). */
+    /** The default: the USB gadget only; no gadget -> `UNKNOWN · no gadget` at once (OBS-02). */
     USB("USB gadget"),
 
-    /** Always the scripted [FakeSignalSource] in the selected [FakeMode]. */
+    /** Always the scripted [FakeSignalSource] in the selected [FakeMode] (tagged `FAKE`). */
     FAKE("Fake");
 
+    /** Whether a tap right now goes to the fake, given whether the gadget's port is open. */
+    fun usesFake(gadgetConnected: Boolean): Boolean = when (this) {
+        USB -> false
+        FAKE -> true
+        AUTO -> !gadgetConnected
+    }
+
     companion object {
+        /** Fail closed: a fresh install (or an unreadable stored value) sends taps to the gadget only. */
+        val DEFAULT: SignalChoice = USB
+
         fun parse(text: String?): SignalChoice? = entries.firstOrNull { it.name.equals(text?.trim(), ignoreCase = true) }
     }
 }
@@ -37,11 +51,7 @@ class SwitchingSignalSource(
     override val kind: SignalKind get() = last
 
     /** The source the next challenge would use. */
-    fun pick(): SignalSource = when (choice()) {
-        SignalChoice.USB -> usb
-        SignalChoice.FAKE -> fake
-        SignalChoice.AUTO -> if (usbConnected()) usb else fake
-    }
+    fun pick(): SignalSource = if (choice().usesFake(usbConnected())) fake else usb
 
     override suspend fun challenge(req: ChallengeRequest): Flow<SignalEvent> {
         val source = pick()

@@ -38,7 +38,7 @@ class SettingsFormTest {
         assertEquals(SettingsForm.Result.Valid(v), SettingsForm.from(v).parse())
         val usb = SettingsForm.from(v).copy(signalChoice = SignalChoice.USB).parse() as SettingsForm.Result.Valid
         assertEquals(SignalChoice.USB, usb.values.signalChoice)
-        assertEquals(SignalChoice.AUTO, values.signalChoice) // the default: gadget when attached, else fake
+        assertEquals(SignalChoice.USB, values.signalChoice) // the default fails closed: gadget only, never the fake
     }
 
     @Test

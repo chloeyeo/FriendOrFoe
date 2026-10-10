@@ -11,7 +11,7 @@ import java.util.Locale
  * needs a JSON library, and the exact output is unit-tested on the JVM.
  *
  * Event: {t, class, box, iffStatus, droneId, reason} (the dashboard's schema) plus text, trackId, score, rssiDbm,
- * roundTripMs; `class`/`box`/`iffStatus` are null on a plain status line.
+ * roundTripMs, source (`USB_GADGET` / `FAKE`); `class`/`box`/`iffStatus`/`source` are null on a plain status line.
  * Frame: {t, width, height, tracks:[{id, class, box, tag, tone, detail}]}: the tracks as the phone draws them,
  * boxes in preview pixels of a width x height preview, with the phone's own tag text.
  */
@@ -28,6 +28,7 @@ object EventJson {
         "score" to e.score,
         "rssiDbm" to e.rssiDbm,
         "roundTripMs" to e.roundTripMs,
+        "source" to e.source?.name,
     )
 
     /** Several events as one JSON array (the dashboard accepts a list). */
