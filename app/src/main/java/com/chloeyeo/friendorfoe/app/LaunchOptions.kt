@@ -18,7 +18,8 @@ import java.io.File
  * | `parity` | `--es parity parity/scene.png` | run the parity harness on that APK asset |
  * | `dump_frame` | `--ez dump_frame true` | write the next analysed frame to `filesDir/dumps/frame.png` |
  * | `log_raw` | `--ez log_raw true` | log every raw ClikaRT row (`raw` for r18, `raw drone` / `raw person` for dual) |
- * | `detector` | `--es detector dual` / `clikart` (r18 alone) / `fake` / `clikart:<dir>` / `dual:<droneDir>\|<personDir>` / `http:http://<ip>:8000` | stored detector pref (persists) |
+ * | `detector` | `--es detector dual` (320 input) / `dual640` / `clikart` (r18 alone) / `fake` / `clikart:<dir>` / `dual:<droneDir>\|<personDir>` / `http:http://<ip>:8000` | stored detector pref (persists) |
+ * | `motion_bench` | `--ez motion_bench true` | log the motion tracker's cost per step and per fast-forward on this CPU |
  * | `demo` | `--ez demo false` | stored demo-mode pref (persists): false shows the live camera, true the scripted scenario |
  *
  * [from] must run BEFORE `app.coordinator` is first touched: the lazy singleton reads the detector pref once.
@@ -37,6 +38,13 @@ data class LaunchOptions(
             if (!BuildConfig.DEBUG || intent == null) return LaunchOptions()
             intent.getStringExtra("detector")?.let { applyDetector(app, it) }
             DebugHooks.logRawRows = intent.getBooleanExtra("log_raw", false)
+            if (intent.getBooleanExtra("motion_bench", false)) {
+                // After the model load (15 s), warm (5 rounds), beside the running detector, as the motion executor runs.
+                Thread({
+                    Thread.sleep(15_000)
+                    com.chloeyeo.friendorfoe.track.MotionBench.run(rounds = 5).forEach { Log.i(TAG, it) }
+                }, "motion-bench").start()
+            }
             if (intent.hasExtra("demo")) app.prefs.demoMode = intent.getBooleanExtra("demo", true).also { Log.i(TAG, "launch extra demo=$it") }
             return LaunchOptions(
                 threads = intent.getIntExtra("clika_threads", 2).coerceIn(1, 8),
@@ -60,6 +68,7 @@ data class LaunchOptions(
                 "fake" -> DetectorConfig.Fake
                 "clikart" -> app.prefs.defaultClikaRtConfig
                 "dual" -> app.prefs.defaultDualConfig
+                "dual640" -> app.prefs.dual640Config
                 else -> when (val d = DetectorConfig.decode(value)) {
                     is DetectorConfig.ClikaRt ->
                         if (inAppStorage(app, d.modelDir)) d else null.also { Log.w(TAG, "detector extra ignored: dir outside app storage") }

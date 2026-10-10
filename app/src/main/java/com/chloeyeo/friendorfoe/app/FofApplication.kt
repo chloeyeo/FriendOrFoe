@@ -11,6 +11,8 @@ import com.chloeyeo.friendorfoe.detect.DualDetector
 import com.chloeyeo.friendorfoe.detect.Frame
 import com.chloeyeo.friendorfoe.session.IffCoordinator
 import com.chloeyeo.friendorfoe.signal.FakeSignalSource
+import com.chloeyeo.friendorfoe.track.GrayFrame
+import com.chloeyeo.friendorfoe.track.MotionStats
 import io.clika.modelverse.Modelverse
 import io.clika.modelverse.ModelverseException
 import io.clika.modelverse.load
@@ -18,6 +20,7 @@ import io.clika.runtime.ClikaRtAndroid
 import io.clika.runtime.ClikaRtException
 import io.clika.runtime.Ops
 import io.clika.runtime.Tensors
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -40,8 +43,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    `LICENSE_SERVER_UNREACHABLE`).
  * 5. Model directory: `filesDir/models/rtdetr_v2_r18vd` (D-04) holding the pushed hub snapshot (`config.json`,
  *    `model.safetensors`, `preprocessor_config.json`); [ClikaRtDetector.open] opens it with `offline = true`. The
- *    default [DualDetector] opens two such snapshots in turn, `filesDir/models/rtdetr_v2_drone_rahul` (drones) and
- *    `filesDir/models/dfine_small_coco` (people). There is
+ *    default [DualDetector] opens two such snapshots in turn, `filesDir/models/rtdetr_v2_drone_rahul_320` (drones) and
+ *    `filesDir/models/dfine_small_coco_320` (people), both at 320x320 input (`--es detector dual640` for 640). There is
  *    deliberately no `getExternalFilesDir` fallback: the snapshot already sits in `filesDir` on phone A and a second
  *    path doubles the failure modes.
  * 6. Every refusal becomes a `StatusUi.modelNote` through [noteFor]; branch on code names, never on message text.
@@ -64,6 +67,13 @@ class FofApplication : Application() {
 
     @Volatile
     private var tickFailed = false
+
+    /** The 10 fps motion path's per-second numbers (written by the motion executor only). */
+    private val motionStats = MotionStats()
+
+    /** The detection half of the strip note (`detect 2.6 s (2.0+0.6)`, drone + person); null until a tick succeeded. */
+    @Volatile
+    private var detectNote: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -175,20 +185,55 @@ class FofApplication : Application() {
             }
             val st = coordinator.state.value
             val dual = coordinator.detector as? DualDetector
+            val detectSecs = "%.1f".format(Locale.US, st.status.msPerFrame / 1000.0)
             if (dual != null) {
-                // The per-model split on the strip, e.g. `drone 6.1 s + person 1.4 s`.
-                val split = dual.timingNote()
-                coordinator.setStatus { it.copy(modelNote = split) }
+                // The per-model split on the strip, e.g. `track 10.0 fps · detect 2.6 s (2.0+0.6)` (drone + person).
+                detectNote = "detect $detectSecs s (${"%.1f".format(Locale.US, dual.lastDroneMs / 1000.0)}+" +
+                    "${"%.1f".format(Locale.US, dual.lastPersonMs / 1000.0)})"
                 Log.i(TAG, "tick ${st.status.msPerFrame} ms (${dual.lastDroneMs} drone + ${dual.lastPersonMs} person) " +
-                    "${"%.2f".format(st.status.fps)} fps tracks=${st.tracks.size}")
+                    "${"%.2f".format(st.status.fps)} fps tracks=${st.tracks.size} motion ${"%.1f".format(Locale.US, motionStats.fps)} fps")
             } else {
+                detectNote = "detect $detectSecs s"
                 Log.i(TAG, "tick ${st.status.msPerFrame} ms ${"%.2f".format(st.status.fps)} fps tracks=${st.tracks.size}")
             }
+            refreshNote()
         } catch (e: Exception) {
             tickFailed = true
             Log.w(TAG, "tick failed: ${noteFor(e)}")
             coordinator.setStatus { it.copy(modelReady = false, modelNote = noteFor(e)) }
         }
+    }
+
+    /**
+     * One 10 fps motion step on the camera controller's `motion` executor: moves the tracked boxes
+     * ([IffCoordinator.motionTick]) and, once per second, logs `motion F fps median M ms/tick sample S ms tracks=K`
+     * and refreshes the strip note (`track 9.8 fps · detect 2.6 s (…)`). Never touches the runtime lane.
+     */
+    fun runMotionTick(gray: GrayFrame) {
+        val t0 = System.nanoTime()
+        try {
+            coordinator.motionTick(gray)
+        } catch (e: Exception) {
+            Log.w(TAG, "motion tick failed: ${noteFor(e)}")
+            return
+        }
+        val tickMs = (System.nanoTime() - t0) / 1e6
+        val summary = motionStats.add(System.currentTimeMillis(), tickMs, gray.sampleNanos / 1e6) ?: return
+        Log.i(
+            TAG,
+            "motion ${"%.1f".format(Locale.US, summary.fps)} fps median ${"%.2f".format(Locale.US, summary.medianTickMs)} ms/tick " +
+                "sample ${"%.2f".format(Locale.US, summary.medianSampleMs)} ms gray ${gray.width}x${gray.height} " +
+                "tracks=${coordinator.state.value.tracks.size}",
+        )
+        refreshNote()
+    }
+
+    /** `track F fps · <detectNote>` on the strip, once a detection tick succeeded and while ticks are not failing. */
+    private fun refreshNote() {
+        val detect = detectNote ?: return
+        if (tickFailed || runtimeLoading) return
+        val note = "track ${"%.1f".format(Locale.US, motionStats.fps)} fps · $detect"
+        coordinator.setStatus { it.copy(modelNote = note) }
     }
 
     /** Debug: the parity harness on the lane, queued behind the load job; [assetPath] names an APK asset. */

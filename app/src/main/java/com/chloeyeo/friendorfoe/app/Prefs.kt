@@ -17,9 +17,17 @@ class Prefs(context: Context) {
     /** The D-04 model directory: `<filesDir>/models/rtdetr_v2_r18vd` (the snapshot is copied there on the phone). */
     private val defaultModelDir: String = File(context.filesDir, "models/rtdetr_v2_r18vd").path
 
-    /** The dual detector's snapshots: `<filesDir>/models/rtdetr_v2_drone_rahul` and `<filesDir>/models/dfine_small_coco`. */
-    private val defaultDroneModelDir: String = File(context.filesDir, "models/rtdetr_v2_drone_rahul").path
-    private val defaultPersonModelDir: String = File(context.filesDir, "models/dfine_small_coco").path
+    /**
+     * The dual detector's snapshots at 320x320 input (the default): `<filesDir>/models/rtdetr_v2_drone_rahul_320`
+     * and `<filesDir>/models/dfine_small_coco_320`, the same weights as the 640 dirs with `preprocessor_config.json`
+     * `size` set to 320x320 (about 4x fewer pixels, so about 3-4x faster per frame).
+     */
+    private val defaultDroneModelDir: String = File(context.filesDir, "models/rtdetr_v2_drone_rahul_320").path
+    private val defaultPersonModelDir: String = File(context.filesDir, "models/dfine_small_coco_320").path
+
+    /** The same two models at their published 640x640 input, for A/B (`--es detector dual640`). */
+    private val dual640DroneModelDir: String = File(context.filesDir, "models/rtdetr_v2_drone_rahul").path
+    private val dual640PersonModelDir: String = File(context.filesDir, "models/dfine_small_coco").path
 
     /**
      * Which detector runs; the dual ClikaRT detector by default; `clikart:` (r18 alone), `fake` or `http:` only when
@@ -96,9 +104,13 @@ class Prefs(context: Context) {
     val defaultClikaRtConfig: DetectorConfig
         get() = DetectorConfig.ClikaRt(defaultModelDir)
 
-    /** The fresh-install detector: drone specialist + D-FINE person model, for the `dual` launch extra. */
+    /** The fresh-install detector: drone specialist + D-FINE person model at 320x320, for the `dual` launch extra. */
     val defaultDualConfig: DetectorConfig
         get() = DetectorConfig.Dual(defaultDroneModelDir, defaultPersonModelDir)
+
+    /** The same pair at 640x640, for the `dual640` launch extra (A/B against the 320 default). */
+    val dual640Config: DetectorConfig
+        get() = DetectorConfig.Dual(dual640DroneModelDir, dual640PersonModelDir)
 
     fun reChecksConfig(): ReChecks.Config = ReChecks.Config(rttBudgetMs, rssiFloorDbm, strictPhysical)
 
