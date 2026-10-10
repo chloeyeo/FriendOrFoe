@@ -101,6 +101,16 @@ class Tracker(
         return live.filter { it.misses == 0 }
     }
 
+    /**
+     * Moves live track [id] to [box] without touching its id, score, misses or last-seen time (the 10 fps
+     * [MotionTracker] keeps the boxes current between detections, so the next IoU match compares like with like).
+     * Unknown ids are ignored.
+     */
+    fun moveTo(id: Int, box: BoxF) {
+        val i = live.indexOfFirst { it.id == id }
+        if (i >= 0) live[i] = live[i].copy(box = box)
+    }
+
     /** Forgets every track; ids keep counting up so an old ring is never confused with a new object. */
     fun reset() {
         live.clear()
