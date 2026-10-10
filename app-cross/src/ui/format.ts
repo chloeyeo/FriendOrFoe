@@ -25,6 +25,7 @@ const REASONS: Record<string, string> = {
   'no response': 'No response',
   'bad tag': 'Authentication failed',
   'unknown drone id': 'Drone id not accepted',
+  'unknown person id': 'Person id not accepted',
 };
 
 /** The result row's second line, in the web dashboard's words. */
@@ -34,6 +35,7 @@ export function reasonOf(e: EventUi): string {
 }
 
 export function targetOf(e: EventUi): string {
+  if (e.cls === 'PERSON') return e.droneId ? `Person · ${e.droneId}` : e.trackId != null ? `Person #${e.trackId}` : 'Unidentified person';
   return e.droneId || (e.trackId != null ? `Drone #${e.trackId}` : 'Unidentified drone');
 }
 

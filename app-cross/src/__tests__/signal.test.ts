@@ -1,4 +1,3 @@
-import { encodeChallenge, encodeStatusRequest, parseLine } from '../signal/gadgetLineCodec';
 import { ReChecks } from '../signal/reChecks';
 import type { SignalAnswer } from '../signal/signal';
 
@@ -14,41 +13,6 @@ const answer = (patch: Partial<SignalAnswer> = {}): SignalAnswer => ({
   responseMs: 42,
   source: 'USB_GADGET',
   ...patch,
-});
-
-describe('GadgetLineCodec', () => {
-  it('encodes the two phone commands as one JSON object each', () => {
-    expect(encodeChallenge({ boxId: 3, challengerId: 7, t: 1760000000 })).toBe(
-      '{"cmd":"challenge","boxId":3,"challengerId":7,"t":1760000000}',
-    );
-    expect(encodeStatusRequest()).toBe('{"cmd":"status"}');
-  });
-
-  it('parses the README answer lines', () => {
-    expect(
-      parseLine(`{"type":"answer","verdict":"FRIEND","reason":null,"droneId":"RQ-07","nonce":"${NONCE.toUpperCase()}","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}`),
-    ).toEqual(answer());
-    expect(parseLine(`{"type":"answer","verdict":"UNKNOWN","reason":"no response","nonce":"${NONCE}","responseMs":10000}`)).toEqual(
-      answer({ verdict: 'UNKNOWN', reason: 'no response', droneId: null, rssiDbm: null, responseMs: 10000 }),
-    );
-  });
-
-  it('turns a status line into readable text', () => {
-    expect(parseLine('{"type":"status","fw":"0.1","battery":3.9,"mode":"HONEST"}')).toEqual({
-      type: 'status',
-      text: 'fw 0.1 · battery 3.9 V · mode HONEST',
-    });
-    expect(parseLine('{"type":"status"}')).toEqual({ type: 'status', text: 'status' });
-  });
-
-  it('skips blank lines and foreign types, fails loudly on broken answers', () => {
-    expect(parseLine('   ')).toBeNull();
-    expect(parseLine('{"type":"debug","x":1}')).toBeNull();
-    expect(() => parseLine('not json')).toThrow('not a JSON object');
-    expect(() => parseLine(`{"type":"answer","verdict":"MAYBE","nonce":"${NONCE}","responseMs":1}`)).toThrow('unknown verdict');
-    expect(() => parseLine(`{"type":"answer","verdict":"FOE","nonce":"${NONCE}"}`)).toThrow('responseMs');
-    expect(() => parseLine('{"type":"answer","verdict":"FOE","nonce":"abc","responseMs":1}')).toThrow('bad nonce');
-  });
 });
 
 describe('ReChecks', () => {
@@ -80,6 +44,12 @@ describe('ReChecks', () => {
     const r = new ReChecks().check(answer({ verdict: 'FOE', reason: 'bad tag', rssiDbm: -90 }), 100);
     expect(r).toMatchObject({ verdict: 'FOE', reason: 'bad tag' });
     expect(r.notes).toContain('phone also: signal mismatch');
+  });
+
+  it('skips the replay check when the reader lost the nonce line', () => {
+    const r = new ReChecks().check(answer({ nonceHex: null }), 100);
+    expect(r.verdict).toBe('FRIEND');
+    expect(r.notes).toContain('nonce not reported; replay check skipped');
   });
 
   it('passes UNKNOWN through but still records the nonce', () => {

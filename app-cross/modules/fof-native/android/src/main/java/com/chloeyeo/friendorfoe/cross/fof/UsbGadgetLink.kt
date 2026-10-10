@@ -16,10 +16,10 @@ import com.hoho.android.usbserial.driver.UsbSerialProber
 import com.hoho.android.usbserial.util.SerialInputOutputManager
 
 /**
- * The reader gadget over USB CDC serial (README "Gadget link over USB", docs/GADGET_LINK.md; the native app's
- * `UsbGadgetSignalSource` plan): the phone is USB host over OTG, 115200 8N1, one JSON object per line. This class
- * only moves lines; `src/signal/gadgetLineCodec.ts` encodes and parses them and `src/signal/usbGadgetSignalSource.ts`
- * runs the challenge. Boards the default prober does not know (native USB on ESP32-S3 / RP2040) are tried as CDC ACM.
+ * The BLE IFF reader (firmware/reader, an ESP32-C3) over USB CDC serial: the phone is USB host over OTG, 115200 8N1,
+ * LF-terminated lines (serial interface v2, firmware/README.md). This class only moves lines;
+ * `src/signal/readerProtocol.ts` encodes and parses them and `src/signal/readerSignalSource.ts` runs the challenge.
+ * Boards the default prober does not know are tried as CDC ACM.
  */
 class UsbGadgetLink(
   private val context: Context,
@@ -125,13 +125,23 @@ class UsbGadgetLink(
     return UsbSerialProber(table).findAllDrivers(manager)
   }
 
+  private fun isEspUsbJtag(driver: UsbSerialDriver): Boolean =
+    driver.device.vendorId == 0x303A && driver.device.productId == 0x1001
+
   private fun connect(driver: UsbSerialDriver): Result<String> = try {
     val connection = manager.openDevice(driver.device) ?: throw IllegalStateException("USB_OPEN_FAILED")
     val p = driver.ports[0]
     p.open(connection)
     p.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
     try {
-      p.dtr = true // native-USB boards only start talking once DTR is up
+      if (isEspUsbJtag(driver)) {
+        // The ESP32-C3's built-in USB-Serial/JTAG talks without DTR, and DTR/RTS changes can reset it into the
+        // download mode (firmware/tools/serial_connection.py), so both stay low.
+        p.dtr = false
+        p.rts = false
+      } else {
+        p.dtr = true // other native-USB CDC boards only start talking once DTR is up
+      }
     } catch (_: Exception) {
     }
     port = p

@@ -12,9 +12,11 @@ import { eventBody, frameBody, planEvents } from '../net/eventJson';
 import { IffCoordinator } from '../session/iffCoordinator';
 import { grayFromEvent } from '../track/grayFrame';
 import { FakeSignalSource } from '../signal/fakeSignalSource';
-import { UsbGadgetSignalSource, type GadgetLinkState } from '../signal/usbGadgetSignalSource';
+import { BridgeLink } from '../signal/lineLink';
+import { ReaderSignalSource, type GadgetLinkState } from '../signal/readerSignalSource';
 import { probeOffline } from './offline';
 import { acceptedIds, type Settings } from './settings';
+import { usbLink } from './usbLink';
 
 export function detectorName(s: Settings): string {
   if (s.detector === 'clikart') {
@@ -45,7 +47,7 @@ export function useSession(settings: Settings) {
   const loadNote = useRef<string | null>(null);
   const frameFailed = useRef(false);
   const [gadget, setGadget] = useState<GadgetLinkState>({ connected: false, note: null });
-  const [usbSource, setUsbSource] = useState<UsbGadgetSignalSource | null>(null);
+  const [readerSource, setReaderSource] = useState<ReaderSignalSource | null>(null);
   const [cameraGranted, setCameraGranted] = useState(false);
 
   const onPreviewLayout = useCallback(
@@ -56,21 +58,26 @@ export function useSession(settings: Settings) {
     [c],
   );
 
-  // Signal source: the reader gadget over USB, or the simulated gadget (demo mode).
+  // Signal source: the BLE IFF reader (on this phone's USB port, or on the laptop behind the bridge), or the
+  // simulated gadget (demo mode).
   useEffect(() => {
-    if (settings.signal === 'usb') {
-      const usb = new UsbGadgetSignalSource((link) => {
-        setGadget(link);
-        c.setStatus((s) => ({ ...s, gadgetConnected: link.connected }));
-      });
-      c.signalSource = usb;
-      setUsbSource(usb);
-      setGadget(usb.linkState);
+    if (settings.signal === 'usb' || settings.signal === 'bridge') {
+      const url = settings.readerBridgeUrl;
+      const reader = new ReaderSignalSource(
+        (h) => (settings.signal === 'usb' ? usbLink(h) : new BridgeLink(url, h)),
+        (link) => {
+          setGadget(link);
+          c.setStatus((s) => ({ ...s, gadgetConnected: link.connected }));
+        },
+      );
+      c.signalSource = reader;
+      setReaderSource(reader);
+      setGadget(reader.linkState);
       c.setStatus((s) => ({ ...s, gadgetConnected: false }));
-      usb.connect().catch((e: Error) => c.log(`gadget · ${e.message}`));
+      reader.connect().catch((e: Error) => c.log(`reader · ${e.message}`));
       return () => {
-        usb.close();
-        setUsbSource(null);
+        reader.close();
+        setReaderSource(null);
       };
     }
     const fake = new FakeSignalSource(settings.fakeMode);
@@ -80,7 +87,7 @@ export function useSession(settings: Settings) {
     return () => fake.close();
     // fakeMode changes are applied in place below, without replacing the source (its nonce memory drives REPLAY).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [c, settings.signal]);
+  }, [c, settings.signal, settings.readerBridgeUrl]);
 
   useEffect(() => {
     if (c.signalSource instanceof FakeSignalSource) c.signalSource.mode = settings.fakeMode;
@@ -274,8 +281,8 @@ export function useSession(settings: Settings) {
   const zoomBy = useCallback((factor: number) => c.rescale(factor), [c]);
   const reset = useCallback(() => c.reset(), [c]);
   const connectGadget = useCallback(() => {
-    usbSource?.connect().catch((e: Error) => c.log(`gadget · ${e.message}`));
-  }, [c, usbSource]);
+    readerSource?.connect().catch((e: Error) => c.log(`reader · ${e.message}`));
+  }, [c, readerSource]);
 
   return { state, onFrame, onGray, onCameraError, zoomBy, onPreviewLayout, challenge, reset, gadget, connectGadget, cameraGranted };
 }

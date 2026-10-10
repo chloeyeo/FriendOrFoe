@@ -28,7 +28,7 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
   const layout = useLayout();
   const { state } = session;
   const resultCount = state.events.filter((e) => e.verdict).length;
-  const gadgetLabel = settings.signal === 'fake' ? 'Sim gadget' : 'Gadget';
+  const gadgetLabel = settings.signal === 'fake' ? 'Sim gadget' : 'Reader';
 
   const camera: CameraProps | null =
     hasNativeCamera && settings.detector !== 'fake' && session.cameraGranted
@@ -44,7 +44,7 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
         }
       : null;
 
-  const onTapDrone = useCallback(
+  const onTapTarget = useCallback(
     (id: number) => {
       if (session.challenge(id)) haptics.challenge();
       else haptics.refused();
@@ -68,7 +68,7 @@ export function ObserverScreen({ settings, onSettings }: { settings: Settings; o
       status={state.status}
       camera={camera}
       onPreviewLayout={session.onPreviewLayout}
-      onTapDrone={onTapDrone}
+      onTapTarget={onTapTarget}
       onZoom={session.zoomBy}
       panelOpen={panelOpen}
       onOpenPanel={() => setPanelOpen(true)}

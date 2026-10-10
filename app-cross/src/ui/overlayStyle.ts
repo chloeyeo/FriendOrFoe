@@ -1,5 +1,5 @@
 import { area } from '../core/box';
-import type { IffState, TrackUi } from '../core/types';
+import { isIdentifiable, type IffState, type TrackUi } from '../core/types';
 
 /** Ring and tag colour family (ui/overlay/OverlayStyle.kt); the web dashboard uses the same names. */
 export type Tone = 'amber' | 'green' | 'red' | 'neutral';
@@ -42,15 +42,18 @@ function evidence(v: Extract<IffState, { kind: 'VERDICT' }>): string | null {
 }
 
 export function tagFor(track: TrackUi, nowMs: number): TrackTag {
-  if (track.cls === 'PERSON') return { text: 'person', tone: 'neutral', detail: null, countdown: null };
   if (track.cls === 'BIRD') return { text: 'bird', tone: 'neutral', detail: null, countdown: null };
   const iff = track.iff;
+  const noun = track.cls === 'PERSON' ? 'person' : 'drone';
   switch (iff.kind) {
     case 'UNCHALLENGED':
-      return { text: `drone${TAG_SEP}?`, tone: 'amber', detail: null, countdown: null };
+      // An unasked drone is the threat on screen (amber); an unasked person stays calm until someone taps it.
+      return track.cls === 'PERSON'
+        ? { text: 'person', tone: 'neutral', detail: null, countdown: null }
+        : { text: `drone${TAG_SEP}?`, tone: 'amber', detail: null, countdown: null };
     case 'CHALLENGED': {
       const c = countdown(iff.until, nowMs, iff.windowMs);
-      return { text: `drone${TAG_SEP}challenge ${c.seconds} s`, tone: 'amber', detail: null, countdown: c };
+      return { text: `${noun}${TAG_SEP}challenge ${c.seconds} s`, tone: 'amber', detail: null, countdown: c };
     }
     case 'VERDICT':
       if (iff.verdict === 'FRIEND') {
@@ -76,13 +79,14 @@ export function compactLabel(text: string): string {
 }
 
 /**
- * The drone track under a tap at (x, y) in preview pixels, or null (ui/overlay/HitTest.kt): boxes grow by `slop`
- * so a small, far drone is still easy to hit; when boxes overlap the smallest wins.
+ * The drone or person track under a tap at (x, y) in preview pixels, or null (ui/overlay/HitTest.kt): boxes grow by
+ * `slop` so a small, far drone is still easy to hit; when boxes overlap the smallest wins (a drone in front of a
+ * person is the drone).
  */
-export function droneAt(tracks: TrackUi[], x: number, y: number, slop = 0): TrackUi | null {
+export function targetAt(tracks: TrackUi[], x: number, y: number, slop = 0): TrackUi | null {
   let best: TrackUi | null = null;
   for (const t of tracks) {
-    if (t.cls !== 'DRONE') continue;
+    if (!isIdentifiable(t.cls)) continue;
     const b = t.box;
     if (x < b.left - slop || x > b.right + slop || y < b.top - slop || y > b.bottom + slop) continue;
     if (!best || area(b) < area(best.box)) best = t;

@@ -23,11 +23,11 @@ the same shape.
 | 10 s box lock, lock-aware tick | `IffCoordinator.challenge` (02-03, planned) | `src/session/iffCoordinator.ts` |
 | Tap → gadget → re-check → verdict → ring | `IffCoordinator` (Phase 5 / #23, planned) | `src/session/iffCoordinator.ts` |
 | Re-checks (nonce ledger, RTT budget, RSSI floor) | `ReChecks` (stream 2, done) | `src/signal/reChecks.ts` |
-| Gadget line codec, simulated gadget | `GadgetLineCodec`, `FakeSignalSource` (done) | `src/signal/` |
+| BLE IFF reader protocol (serial interface v2), simulated gadget | `GadgetLineCodec` (replaced by Ihan's firmware protocol), `FakeSignalSource` (done) | `src/signal/readerProtocol.ts`, `fakeSignalSource.ts` |
 | ClikaRT bring-up + license probe, RT-DETR open/detect | `FofApplication.loadRuntime`, `ClikaRtDetector` (02-02, stubs) | `modules/fof-native/.../ClikaEngine.kt` |
 | CameraX Preview + RGBA analysis at about 1 fps | `CameraController` (02-04, stub) | `modules/fof-native/.../FofCameraView.kt` |
 | Laptop `clikart-cli serve` detector (H4 contingency) | `HttpDetector` (02-02, stub) | `FofCameraView.postToServe` + `src/detect/detectionsJson.ts` |
-| Reader gadget over USB CDC serial | `UsbGadgetSignalSource` (#16, stub) | `modules/fof-native/.../UsbGadgetLink.kt` + `src/signal/usbGadgetSignalSource.ts` |
+| BLE IFF reader over USB CDC serial, or via the laptop | `UsbGadgetSignalSource` (#16, stub) | `src/signal/readerSignalSource.ts` over `lineLink.ts`: `UsbGadgetLink.kt` on the phone, or `tools/reader_bridge.py` on the laptop |
 | OFFLINE badge rule | `OfflineRule` (02-01, done) | `src/app/offline.ts` |
 | Dashboard mirror (events, tracks, thumbnail) | `EventClient`, `EventJson`, `EventDiff` (stream 3, done) | `src/net/` + the camera view's thumbnail post |
 | UI | Compose `ui/` | `src/ui/`, following `web/src/lib` (palette, square layout, result list) |
@@ -45,15 +45,19 @@ source are chosen separately in Settings, so the on-device camera can run with t
 ## Status
 
 - **Verified on this machine**
-  - The TypeScript logic: 42 jest tests in `src/__tests__/`, ported from the native unit tests.
+  - The TypeScript logic: 86 jest tests in `src/__tests__/`, ported from the native unit tests, plus the reader
+    protocol against the firmware README's lines.
   - `tsc --noEmit` and `npx expo-doctor` (21/21 checks).
   - `npx expo prebuild -p android`: the generated project has minSdk 28, Kotlin 2.2.10, arm64-v8a only, the ClikaRT
     Maven repo, jitpack, cleartext HTTP and landscape.
   - The whole UI and the challenge flow on the web build, with the simulated detector and gadget.
+  - The reader path end to end on the web build: `tools/reader_bridge.py --simulate` → STATUS handshake → tap →
+    `QUERY` → `FRIEND · 1`.
 - **Not verified yet**
   - The Kotlin in `modules/fof-native` has never been compiled: this Mac has no JDK, no Android SDK and no ClikaRT
     Maven repo. The first `expo run:android` on the integration laptop is its first compile.
-  - Nothing has run on a phone yet.
+  - No Android phone has run it yet. The iPhone build runs (Core ML detector).
+  - The reader hardware (ESP32-C3 + NU40) has not been on this app's line yet: only the simulated bridge has.
   - The ClikaRT calls in `ClikaEngine.kt` are the same calls, with the same arguments, as the native app's
     `ClikaRtDetector` and `FofApplication.loadRuntime`. Those compiled against the 0.6.4 AAR and ran on phone A at
     checkpoint 1. The `ClikaRtAndroid` signatures match the Kotlin API reference on docs.clika.io.
@@ -194,20 +198,57 @@ checkpoint 1: a Galaxy A06, 20:9, about 853 x 384 dp held landscape.
 
   A ClikaRT refusal shows its code name at the bottom of the observation pane, for example `LICENSE_FAILED`,
   `model dir missing: model.safetensors` or `no license in build`.
-- **Signal source** (Settings):
-  - Reader gadget (USB) asks for USB permission once. The Gadget tab has a Connect button.
+- **Signal source** (Settings), see "BLE IFF reader" below:
+  - Reader on USB (Android): the ESP32-C3 reader on the phone's USB-C port over OTG. It asks for USB permission
+    once. The Gadget tab has a Connect button.
+  - Reader via laptop (iPhone, or any phone): the reader on the laptop's USB port behind `tools/reader_bridge.py`.
   - Simulated gadget: the Gadget tab switches the drone-side mode (Honest, Replay, Relay, Late, Silent, Impostor),
     the same as the README demo script.
-- **Tap a drone ring** to identify it. The ring counts down for 10 s, then turns green `FRIEND · RQ-07` or red
-  with the reason. Silence ends in `UNKNOWN · no response`.
+- **Tap a drone or a person** to identify it. A friendly soldier carries the same responder as a friendly drone, so
+  a person is challenged the same way. The ring counts down for 10 s, then turns green (`FRIEND · 1` from the
+  reader, `FRIEND · RQ-07` from the simulated gadget) or red with the reason. Silence ends in
+  `UNKNOWN · no response`: nobody answered, which proves nothing either way. Birds are never challenged.
 - **Dashboard URL** (Settings), for example `http://192.168.43.100:8081`, mirrors the log, the drawn tracks and a
   preview thumbnail to `laptop/dashboard`.
 - **Reset** needs a second tap within 3 s.
 
+## BLE IFF reader
+
+The beacon pair is Ihan's firmware (`firmware/`). The reader is an ESP32-C3. The drone-side responder is an NU40. A
+tap sends `QUERY <request_id>` to the reader over serial interface v2. The reader broadcasts the 38-byte HMAC
+challenge and waits up to 3 s for the response. It then prints a `RESULT` line. The phone turns that line into the
+verdict:
+
+- FRIEND stays FRIEND.
+- `AUTH_FAILED` becomes FOE `bad tag`: something answered this nonce without the key.
+- Silence, a malformed packet and a radio fault are UNKNOWN.
+
+The challenge nonce and the drone id come from the reader's `TX_CHALLENGE`/`RX_RESPONSE` lines. The phone's re-checks
+still apply: the nonce ledger and the 2.5 s budget. The reader reports no RSSI, so the RSSI check is skipped unless
+"Strict physical checks" is on. The reader refuses queries for 3 s after each one. A tap inside that window waits for
+the reader's `STATE IDLE`.
+
+```bash
+# Phone on USB (Android): plug the reader in with an OTG cable, choose "Reader on USB" in Settings.
+# Any phone via the laptop (needed on the iPhone, which has no USB serial):
+python3 -m pip install -r ../firmware/tools/requirements.txt   # pySerial
+python3 tools/reader_bridge.py                                  # finds the ESP32-C3 (303a:1001), serves :8766
+python3 tools/reader_bridge.py --simulate                       # no hardware: a reader whose drone always answers
+```
+
+Then choose "Reader via laptop" in Settings and enter the URL that the bridge prints, for example
+`http://192.168.43.100:8766`. The phone and the laptop must be on the same network, such as the hotspot LAN. The
+first connection on the iPhone asks for Local Network access; allow it.
+
+The bridge forwards only `QUERY`, `STATUS` and `HELP`. The HMAC key never crosses the network or the app. Set it
+once with `KEY <64 hex>` over USB, as `firmware/README.md` describes. The ESP32-C3's USB-Serial/JTAG is opened with
+DTR and RTS low, both on Android and in the bridge, because toggling them can reset the board into download mode. If
+the Gadget tab says "download mode", release BOOT and press RESET.
+
 ## Develop
 
 ```bash
-npm test                         # jest: tracker, de-dup, parser, re-checks, codec, coordinator, overlay, dashboard JSON
+npm test                         # jest: tracker, de-dup, parser, re-checks, reader protocol, coordinator, overlay, dashboard JSON
 npm run typecheck
 npx expo start --web --port 8090 # the UI with the simulated detector and gadget (8081 is the dashboard API)
 ```

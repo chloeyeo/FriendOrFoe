@@ -76,7 +76,8 @@ export function SettingsScreen({ settings, modelDirHints, onSave, onCancel, comp
     enabled: true,
   }));
   const signals: { value: SignalKindSetting; label: string; enabled: boolean }[] = [
-    { value: 'usb', label: 'Reader gadget (USB)', enabled: FofUsb !== null },
+    { value: 'usb', label: 'Reader on USB', enabled: FofUsb !== null },
+    { value: 'bridge', label: 'Reader via laptop', enabled: true },
     { value: 'fake', label: 'Simulated gadget', enabled: true },
   ];
 
@@ -143,9 +144,21 @@ export function SettingsScreen({ settings, modelDirHints, onSave, onCancel, comp
           <Field label="Signal source">
             <Segmented options={signals} value={draft.signal} onChange={(v) => set('signal', v)} />
           </Field>
+          {draft.signal === 'bridge' ? (
+            <Field label="Reader bridge URL" error={errors.readerBridgeUrl} hint="the laptop the reader is plugged into, running tools/reader_bridge.py">
+              <TextInput
+                style={[styles.input, errors.readerBridgeUrl && styles.inputError]}
+                value={draft.readerBridgeUrl}
+                onChangeText={(t) => set('readerBridgeUrl', t)}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+            </Field>
+          ) : null}
           <Row stacked={oneColumn}>
             {num('challengerId', 'Challenger id')}
-            <Field label="Accepted drone ids" hint="comma-separated; blank accepts any">
+            <Field label="Accepted ids" hint="drone or person responders; comma-separated; blank accepts any">
               <TextInput style={styles.input} value={draft.acceptedDroneIds} onChangeText={(t) => set('acceptedDroneIds', t)} autoCapitalize="characters" autoCorrect={false} />
             </Field>
           </Row>

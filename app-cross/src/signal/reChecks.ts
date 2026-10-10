@@ -46,14 +46,16 @@ export class ReChecks {
       }
     };
 
-    const fresh = !this.seen.has(answer.nonceHex);
-    this.seen.add(answer.nonceHex);
+    const nonce = answer.nonceHex;
+    const fresh = nonce === null || !this.seen.has(nonce);
+    if (nonce !== null) this.seen.add(nonce);
 
     if (answer.verdict === 'UNKNOWN') {
       notes.push('no answer to re-check');
       return { verdict, reason, notes };
     }
-    if (!fresh) fail('replayed nonce');
+    if (nonce === null) notes.push('nonce not reported; replay check skipped');
+    else if (!fresh) fail('replayed nonce');
     if (roundTripMs > this.config.rttBudgetMs || answer.responseMs > this.config.rttBudgetMs) fail('late response');
     const rssi = answer.rssiDbm;
     if (rssi === null) {

@@ -2,8 +2,8 @@ import { memo, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent, type NativeTouchEvent } from 'react-native';
 
 import { FofCameraView, type CameraErrorEvent, type CameraFrameEvent, type GrayEvent } from '../../modules/fof-native';
-import type { StatusUi, TrackUi } from '../core/types';
-import { compactLabel, droneAt, tagFor } from './overlayStyle';
+import { isIdentifiable, type StatusUi, type TrackUi } from '../core/types';
+import { compactLabel, tagFor, targetAt } from './overlayStyle';
 import { colors, mono, toneColor } from './theme';
 import { useNow } from './format';
 
@@ -25,7 +25,7 @@ interface Props {
   /** Null shows the simulated backdrop (no camera: web, iOS, the simulated detector, or no permission yet). */
   camera: CameraProps | null;
   onPreviewLayout: (width: number, height: number) => void;
-  onTapDrone: (id: number) => void;
+  onTapTarget: (id: number) => void;
   /**
    * `panel`: the web page's pane with its heading row. `immersive`: the phone layout — no heading, the camera takes
    * the full height and [overlay] (brand + status) floats on its top edge, the object summary on its bottom edge.
@@ -75,7 +75,7 @@ export function ObservationPanel({
   status,
   camera,
   onPreviewLayout,
-  onTapDrone,
+  onTapTarget,
   variant = 'panel',
   overlay,
   compact = false,
@@ -150,15 +150,15 @@ export function ObservationPanel({
     onResponderRelease: () => {
       const g = gesture.current;
       if (!g.pinch && !g.moved) {
-        // Inference runs every few seconds on phone A, so the drone may have moved since its box was drawn: be generous.
-        const hit = droneAt(tracks, g.x0, g.y0, compact ? 36 : 24);
-        if (hit) onTapDrone(hit.id);
+        // Inference runs every few seconds on phone A, so the target may have moved since its box was drawn: be generous.
+        const hit = targetAt(tracks, g.x0, g.y0, compact ? 36 : 24);
+        if (hit) onTapTarget(hit.id);
       }
       g.pinch = false;
     },
   };
 
-  const hint = tracks.some((t) => t.cls === 'DRONE' && t.iff.kind === 'UNCHALLENGED') ? ' · tap a drone to identify' : '';
+  const hint = tracks.some((t) => isIdentifiable(t.cls) && t.iff.kind === 'UNCHALLENGED') ? ' · tap to identify' : '';
   const note = status.modelNote ?? (camera ? null : 'Simulated detector · no camera');
 
   return (
@@ -190,7 +190,7 @@ export function ObservationPanel({
             onCameraError={(e) => camera.onCameraError(e.nativeEvent)}
           />
         ) : null}
-        <View style={StyleSheet.absoluteFill} {...responder} accessible accessibilityLabel="Observation. Tap a drone ring to identify it; pinch to zoom.">
+        <View style={StyleSheet.absoluteFill} {...responder} accessible accessibilityLabel="Observation. Tap a drone or a person to identify it; pinch to zoom.">
           {drawOrder(tracks).map((t) => (
             <Ring key={t.id} track={t} now={now} viewWidth={size.width} viewHeight={size.height} compact={compact} />
           ))}
@@ -245,9 +245,13 @@ export function ObservationPanel({
   );
 }
 
-/** Drones last: a drone's tag is what the observer reads, so it is drawn on top. */
+/**
+ * Drawn bottom to top: people and birds, then unasked drones, then whatever was challenged or answered (drone or
+ * person). The tag the observer reads is on top: the answer they asked for, then the drones still to ask about.
+ */
 function drawOrder(tracks: TrackUi[]): TrackUi[] {
-  return [...tracks.filter((t) => t.cls !== 'DRONE'), ...tracks.filter((t) => t.cls === 'DRONE')];
+  const rank = (t: TrackUi) => (t.iff.kind !== 'UNCHALLENGED' ? 2 : t.cls === 'DRONE' ? 1 : 0);
+  return [0, 1, 2].flatMap((r) => tracks.filter((t) => rank(t) === r));
 }
 
 const Grid = memo(function Grid({ width, height }: { width: number; height: number }) {
@@ -294,7 +298,7 @@ function Ring({ track, now, viewWidth, viewHeight, compact }: { track: TrackUi; 
     <View
       pointerEvents="none"
       accessibilityLabel={tag.text}
-      style={[styles.ring, { left, top, width: right - left, height: bottom - top, borderColor: color, borderWidth: track.cls === 'DRONE' ? 2 : 1 }]}
+      style={[styles.ring, { left, top, width: right - left, height: bottom - top, borderColor: color, borderWidth: track.cls === 'DRONE' || track.iff.kind !== 'UNCHALLENGED' ? 2 : 1 }]}
     >
       <View style={[styles.labelRow, { width: maxWidth }, inside ? insideSide : { bottom: '100%', marginBottom: 3, ...side }]}>
         <Text style={[styles.tag, { backgroundColor: color, fontSize: tagSize }]}>{label}</Text>

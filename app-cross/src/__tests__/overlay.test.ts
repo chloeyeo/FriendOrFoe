@@ -1,7 +1,7 @@
 import { box } from '../core/box';
 import type { EventUi, IffState, TrackUi } from '../core/types';
 import { eventBody, frameBody, planEvents } from '../net/eventJson';
-import { compactLabel, countdown, droneAt, tagFor } from '../ui/overlayStyle';
+import { compactLabel, countdown, tagFor, targetAt } from '../ui/overlayStyle';
 
 const track = (iff: IffState, patch: Partial<TrackUi> = {}): TrackUi => ({
   id: 2,
@@ -39,6 +39,13 @@ describe('tagFor', () => {
     expect(tagFor(track(verdict('UNKNOWN', null, null, null, null)), 0)).toMatchObject({ text: 'UNKNOWN · no response', detail: null });
   });
 
+  it('draws a challenged person like a drone', () => {
+    const person = (iff: IffState) => track(iff, { cls: 'PERSON' });
+    expect(tagFor(person({ kind: 'CHALLENGED', until: 7_200, windowMs: 10_000 }), 0)).toMatchObject({ text: 'person · challenge 8 s', tone: 'amber' });
+    expect(tagFor(person(verdict('FRIEND', null, '1', null, 337)), 0)).toMatchObject({ text: 'FRIEND · 1 · 337 ms', tone: 'green' });
+    expect(tagFor(person(verdict('FOE', 'bad tag', '1', null, 337)), 0)).toMatchObject({ text: 'FOE · bad tag', tone: 'red' });
+  });
+
   it('keeps identity and reason on the object, like the web view', () => {
     expect(compactLabel('FRIEND · RQ-07 · −58 dBm · 42 ms')).toBe('FRIEND · RQ-07');
     expect(compactLabel('RQ-07 · −60 dBm · 3450 ms')).toBe('RQ-07');
@@ -50,16 +57,18 @@ describe('tagFor', () => {
   });
 });
 
-describe('droneAt', () => {
-  it('hits drones only, with slop, smallest box first', () => {
+describe('targetAt', () => {
+  it('hits drones and persons, with slop, smallest box first', () => {
     const big = track({ kind: 'UNCHALLENGED' }, { id: 1, box: box(0, 0, 400, 400) });
     const small = track({ kind: 'UNCHALLENGED' }, { id: 2, box: box(100, 100, 120, 120) });
     const person = track({ kind: 'UNCHALLENGED' }, { id: 3, cls: 'PERSON', box: box(90, 90, 130, 130) });
-    expect(droneAt([big, small, person], 110, 110)?.id).toBe(2);
-    expect(droneAt([small], 125, 110)).toBeNull();
-    expect(droneAt([small], 125, 110, 8)?.id).toBe(2);
+    expect(targetAt([big, small, person], 110, 110)?.id).toBe(2); // the drone in front of the person
+    expect(targetAt([big, person], 95, 95)?.id).toBe(3);
+    expect(targetAt([person], 110, 110)?.id).toBe(3);
+    expect(targetAt([small], 125, 110)).toBeNull();
+    expect(targetAt([small], 125, 110, 8)?.id).toBe(2);
     const bird = track({ kind: 'UNCHALLENGED' }, { id: 4, cls: 'BIRD', box: box(100, 100, 120, 120) });
-    expect(droneAt([bird], 110, 110)).toBeNull(); // a bird is never challenged
+    expect(targetAt([bird], 110, 110)).toBeNull(); // a bird is never challenged
   });
 });
 

@@ -15,6 +15,11 @@ export interface BoxF {
 /** PERSON and DRONE as in the native app; BIRD is this app's addition, so a bird is shown but never challenged. */
 export type ObjClass = 'PERSON' | 'DRONE' | 'BIRD';
 
+/** What a tap can challenge: a drone, or a person carrying a responder (the same BLE beacon). Never a bird. */
+export function isIdentifiable(cls: ObjClass): boolean {
+  return cls === 'DRONE' || cls === 'PERSON';
+}
+
 export type VerdictKind = 'FRIEND' | 'FOE' | 'UNKNOWN';
 
 /** One detected object after the class map: class, score (0..1), box in frame pixels. */

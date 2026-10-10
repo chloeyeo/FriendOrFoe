@@ -3,6 +3,7 @@ import {
   DEFAULT_WINDOW_MS,
   EMPTY_STATE,
   UNCHALLENGED,
+  isIdentifiable,
   type BoxF,
   type EventUi,
   type FrameResult,
@@ -23,6 +24,7 @@ import { Tracker } from '../track/tracker';
 /** The tapped box frozen for the challenge window (track/BoxLock.kt); `rect` is in frame pixels. */
 export interface BoxLock {
   boxId: number;
+  cls: ObjClass;
   rect: BoxF;
   until: number;
 }
@@ -56,7 +58,8 @@ type Listener = (state: ObserverUiState) => void;
  * - `tick(frame)`: detections (fast-forwarded from their capture time) -> sticky tracker -> preview coordinates; new
  *   tracks are logged as detection rows; the locked box stays on screen while the detector has lost it (DET-06).
  * - `motionTick(gray)`: the 10 fps motion tracker moves every drawn box between detections (track/MotionTracker.kt).
- * - `challenge(boxId)`: refuses while a window is open or for anything but a live drone track; locks the box for
+ * - `challenge(boxId)`: refuses while a window is open or for anything but a live drone or person track (a person
+ *   carries the same responder as a friendly drone); locks the box for
  *   10 s, shows the countdown, asks the [SignalSource], measures the phone-side round trip, runs [ReChecks] (and the
  *   accepted-id list), then draws the verdict on that box, adds a gadget-panel row and a structured event. No answer
  *   in the window is `UNKNOWN · no response`; silence is never FRIEND.
@@ -258,7 +261,7 @@ export class IffCoordinator {
     if (lock && !live.some((t) => t.id === lock.boxId)) {
       tracks.push({
         id: lock.boxId,
-        cls: 'DRONE',
+        cls: lock.cls,
         box: shown(lock.boxId, lock.rect),
         iff: this.iffById.get(lock.boxId) ?? { kind: 'CHALLENGED', until: lock.until, windowMs: this.windowMs },
         score: 0,
@@ -271,12 +274,15 @@ export class IffCoordinator {
   challenge(boxId: number): boolean {
     const now = this.clock();
     if (this._lock && now < this._lock.until) return false;
-    const track = this.tracker.tracks.find((t) => t.id === boxId && t.cls === 'DRONE' && t.hits >= this.confirmHits);
+    // A drone must be confirmed (drawn) first; a person is drawn at once. A bird is never challenged.
+    const track = this.tracker.tracks.find(
+      (t) => t.id === boxId && isIdentifiable(t.cls) && (t.cls !== 'DRONE' || t.hits >= this.confirmHits),
+    );
     if (!track) return false;
 
     const until = now + this.windowMs;
     const rect = this.motion.box(boxId)?.box ?? track.box;
-    const lock: BoxLock = { boxId, rect, until };
+    const lock: BoxLock = { boxId, cls: track.cls, rect, until };
     this._lock = lock;
     this.iffById.set(boxId, { kind: 'CHALLENGED', until, windowMs: this.windowMs });
     const previewBox = toPreview(this.transform, rect);
@@ -305,7 +311,7 @@ export class IffCoordinator {
       this.iffById.set(boxId, iff);
       if (this._lock === lock) this._lock = null;
       const row: SignalUi = { droneId, verdict, reason, rssiDbm, roundTripMs: ms, t };
-      this.addEvent({ t, text, trackId: boxId, cls: 'DRONE', score: track.score, box: previewBox, verdict, reason, droneId, rssiDbm, roundTripMs: ms });
+      this.addEvent({ t, text, trackId: boxId, cls: track.cls, score: track.score, box: previewBox, verdict, reason, droneId, rssiDbm, roundTripMs: ms });
       this.publish({
         tracks: this.state.tracks.map((tr) => (tr.id === boxId ? { ...tr, iff } : tr)),
         signal: [row, ...this.state.signal].slice(0, 20),
@@ -327,7 +333,7 @@ export class IffCoordinator {
       let { verdict, reason } = result;
       if (verdict === 'FRIEND' && this.acceptedDroneIds.length > 0 && !this.acceptedDroneIds.includes(event.droneId ?? '')) {
         verdict = 'FOE';
-        reason = 'unknown drone id';
+        reason = track.cls === 'PERSON' ? 'unknown person id' : 'unknown drone id';
       }
       for (const note of result.notes) if (note.startsWith('phone')) this.log(`${note} · box ${boxId} · round trip ${roundTrip} ms`);
       finish(verdict, reason, event.droneId, event.rssiDbm, event.responseMs, verdictText(verdict, reason, event.droneId, event.rssiDbm, event.responseMs, boxId));

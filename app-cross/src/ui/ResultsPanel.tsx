@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import type { SignalKindSetting } from '../app/settings';
 import type { EventUi, SignalUi } from '../core/types';
 import { FAKE_MODES, type FakeMode } from '../signal/fakeSignalSource';
-import type { GadgetLinkState } from '../signal/usbGadgetSignalSource';
+import type { GadgetLinkState } from '../signal/readerSignalSource';
 import { ageText, clock, reasonOf, targetOf, useNow } from './format';
 import { dbm } from './overlayStyle';
 import { colors, mono, verdictColor } from './theme';
@@ -14,7 +15,7 @@ interface Props {
   events: EventUi[];
   signal: SignalUi[];
   gadget: GadgetLinkState;
-  signalKind: 'usb' | 'fake';
+  signalKind: SignalKindSetting;
   fakeMode: FakeMode;
   onFakeMode: (mode: FakeMode) => void;
   onConnectGadget: () => void;
@@ -83,7 +84,7 @@ export function ResultsPanel(props: Props) {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>{tab === 'activity' ? 'Waiting for activity' : 'No identifications yet'}</Text>
-              <Text style={styles.emptyText}>{tab === 'activity' ? 'Detections and updates will appear here.' : 'Tap a drone ring to run an identification check.'}</Text>
+              <Text style={styles.emptyText}>{tab === 'activity' ? 'Detections and updates will appear here.' : 'Tap a drone or a person to run an identification check.'}</Text>
             </View>
           }
         />
@@ -176,12 +177,14 @@ function GadgetView({ gadget, signal, signalKind, fakeMode, onFakeMode, onConnec
         <View>
           <View style={styles.gadgetHead}>
             <View style={[styles.indicator, { backgroundColor: gadget.connected ? colors.green : colors.amber }]} />
-            <Text style={styles.gadgetTitle}>{signalKind === 'fake' ? 'Simulated gadget' : gadget.connected ? 'Reader gadget connected' : 'Reader gadget not connected'}</Text>
+            <Text style={styles.gadgetTitle}>
+              {signalKind === 'fake' ? 'Simulated gadget' : `BLE reader ${signalKind === 'bridge' ? 'via laptop' : 'on USB'}${gadget.connected ? '' : ' · not connected'}`}
+            </Text>
           </View>
           {gadget.note ? <Text style={styles.gadgetNote}>{gadget.note}</Text> : null}
-          {signalKind === 'usb' && !gadget.connected ? (
+          {signalKind !== 'fake' && !gadget.connected ? (
             <View style={styles.gadgetPad}>
-              <ActionButton label="Connect gadget" onPress={onConnectGadget} />
+              <ActionButton label="Connect reader" onPress={onConnectGadget} />
             </View>
           ) : null}
           {signalKind === 'fake' ? (

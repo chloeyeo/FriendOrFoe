@@ -56,15 +56,46 @@ describe('IffCoordinator', () => {
     expect(c.getState().signal[0]).toMatchObject({ verdict: 'FRIEND', droneId: 'RQ-07' });
   });
 
-  it('refuses a second tap during the window and taps on persons or unknown ids', () => {
+  it('identifies a person carrying a responder', async () => {
+    const { c, advance } = setup('HONEST');
+    c.tick(frame([PERSON]));
+    const id = c.getState().tracks.find((t) => t.cls === 'PERSON')!.id;
+    expect(c.challenge(id)).toBe(true);
+    expect(c.lock).toMatchObject({ boxId: id, cls: 'PERSON' });
+    await advance(300);
+    expect(iffOf(c, id)).toMatchObject({ kind: 'VERDICT', verdict: 'FRIEND', droneId: 'RQ-07' });
+    expect(c.getState().events[0]).toMatchObject({ verdict: 'FRIEND', cls: 'PERSON', trackId: id });
+  });
+
+  it('keeps a locked person on screen as a person after its track expires', async () => {
+    const { c, advance } = setup('SILENT');
+    c.tick(frame([PERSON]));
+    const id = c.getState().tracks.find((t) => t.cls === 'PERSON')!.id;
+    c.challenge(id);
+    await advance(2_000); // past the person's 1.5 s sticky window, inside the challenge window
+    c.tick(frame([]));
+    expect(c.getState().tracks.find((t) => t.id === id)).toMatchObject({ cls: 'PERSON', iff: { kind: 'CHALLENGED' } });
+  });
+
+  it('turns a person with an id outside the accepted list into FOE unknown person id', async () => {
+    const { c, advance } = setup('HONEST');
+    c.acceptedDroneIds = ['RQ-01'];
+    c.tick(frame([PERSON]));
+    const id = c.getState().tracks.find((t) => t.cls === 'PERSON')!.id;
+    c.challenge(id);
+    await advance(300);
+    expect(iffOf(c, id)).toMatchObject({ kind: 'VERDICT', verdict: 'FOE', reason: 'unknown person id' });
+  });
+
+  it('refuses a second tap during the window, taps on birds and unknown ids', () => {
     const { c } = setup('SILENT');
     c.tick(frame([PERSON, DRONE, { ...DRONE, box: box(60, 40, 90, 60) }]));
     const drones = c.getState().tracks.filter((t) => t.cls === 'DRONE').map((t) => t.id);
     const personId = c.getState().tracks.find((t) => t.cls === 'PERSON')!.id;
-    expect(c.challenge(personId)).toBe(false);
     expect(c.challenge(999)).toBe(false);
     expect(c.challenge(drones[0])).toBe(true);
     expect(c.challenge(drones[1])).toBe(false);
+    expect(c.challenge(personId)).toBe(false);
     expect(iffOf(c, drones[1])).toEqual({ kind: 'UNCHALLENGED' });
   });
 

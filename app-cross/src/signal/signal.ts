@@ -16,10 +16,11 @@ export interface SignalAnswer {
   verdict: VerdictKind;
   reason: string | null;
   droneId: string | null;
-  /** 16 bytes as lower-case hex; the phone rejects any nonce it has seen before. */
-  nonceHex: string;
+  /** 16 bytes as lower-case hex; the phone rejects any nonce it has seen before. Null when the reader's packet
+   * line for this challenge was lost (the replay check is then skipped, see ReChecks). */
+  nonceHex: string | null;
   rssiDbm: number | null;
-  /** Challenge-to-answer time measured by the gadget (10000 on timeout). */
+  /** Challenge-to-answer time measured by the gadget (the reader's elapsed time when nothing answered). */
   responseMs: number;
   source: SignalKind;
 }

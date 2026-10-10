@@ -6,7 +6,8 @@ import { DEFAULT_DRONE_THRESHOLD, DEFAULT_PERSON_THRESHOLD } from '../detect/lab
 import { FAKE_MODES, type FakeMode } from '../signal/fakeSignalSource';
 
 export type DetectorKind = 'clikart' | 'http' | 'coreml' | 'fake';
-export type SignalKindSetting = 'usb' | 'fake';
+/** The BLE IFF reader on this phone's USB port, the same reader behind the laptop bridge, or the simulated gadget. */
+export type SignalKindSetting = 'usb' | 'bridge' | 'fake';
 
 /**
  * The app's settings (the native app's `Prefs` + `SettingsForm`). Defaults make a fresh install demo-able: on an
@@ -28,6 +29,8 @@ export interface Settings {
   detectDrone: boolean;
   detectBird: boolean;
   signal: SignalKindSetting;
+  /** `tools/reader_bridge.py` on the laptop the reader is plugged into, e.g. `http://192.168.43.100:8766`. */
+  readerBridgeUrl: string;
   fakeMode: FakeMode;
   /** Laptop dashboard, e.g. `http://192.168.43.100:8081`; empty disables posting. */
   dashboardUrl: string;
@@ -63,10 +66,12 @@ export const DEFAULT_SETTINGS: Settings = {
   detectDrone: true,
   detectBird: true,
   signal: 'fake',
+  readerBridgeUrl: 'http://192.168.43.100:8766',
   fakeMode: 'HONEST',
   dashboardUrl: '',
   challengerId: 7,
-  acceptedDroneIds: 'RQ-07',
+  // RQ-07 is the simulated gadget's drone; 1 is the reader firmware's DRONE_ID (firmware/reader/config.h).
+  acceptedDroneIds: 'RQ-07, 1',
   personThreshold: DEFAULT_PERSON_THRESHOLD,
   droneThreshold: Platform.OS === 'ios' ? IOS_DRONE_THRESHOLD : ANDROID_DRONE_THRESHOLD,
   rttBudgetMs: 2500,
@@ -76,7 +81,9 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const KEY = 'fof.settings.v1';
 /** Bumped when a default changes in a way stored settings must follow; see [sanitize]. */
-const SCHEMA = 3;
+const SCHEMA = 4;
+/** The accepted-id default before the BLE reader (schema 3 and older). */
+const SCHEMA3_ACCEPTED_IDS = 'RQ-07';
 
 /** What this build can run: Android ClikaRT + laptop serve, iPhone Core ML, and everywhere the simulated boxes. */
 export function availableDetectors(): DetectorKind[] {
@@ -109,12 +116,14 @@ export function sanitize(raw: unknown): Settings {
     if (typeof v === typeof DEFAULT_SETTINGS[key]) (out as unknown as Record<string, unknown>)[key] = v;
   }
   if (!availableDetectors().includes(out.detector)) out.detector = DEFAULT_SETTINGS.detector;
-  if (!['usb', 'fake'].includes(out.signal) || (out.signal === 'usb' && !FofUsb)) out.signal = 'fake';
+  if (!['usb', 'bridge', 'fake'].includes(out.signal) || (out.signal === 'usb' && !FofUsb)) out.signal = 'fake';
   if (!FAKE_MODES.includes(out.fakeMode)) out.fakeMode = 'HONEST';
   // Older schemas on iPhone hold defaults, not choices, so they move to this build's defaults once. Schema 1 (builds
   // without the iPhone camera): the forced 'fake' detector, 1 s interval and 0.28 drone floor. Schema 2: the 0.6 floor.
   const schema = typeof r.schema === 'number' ? r.schema : 1;
-  if (schema < SCHEMA && Platform.OS === 'ios') {
+  // Schema 4 adds the reader's drone id to the untouched accepted-id default, so a real FRIEND is not turned away.
+  if (schema < 4 && out.acceptedDroneIds.trim() === SCHEMA3_ACCEPTED_IDS) out.acceptedDroneIds = DEFAULT_SETTINGS.acceptedDroneIds;
+  if (schema < 3 && Platform.OS === 'ios') {
     if (schema < 2) {
       if (out.detector === 'fake') out.detector = DEFAULT_SETTINGS.detector;
       if (out.intervalMs === 1000) out.intervalMs = DEFAULT_SETTINGS.intervalMs;
@@ -152,6 +161,7 @@ export function validate(s: Settings): SettingsErrors {
   const e: SettingsErrors = {};
   if (s.detector === 'http' && !isHttp(s.serveUrl)) e.serveUrl = 'http://<laptop-ip>:8000';
   if (s.dashboardUrl.trim() && !isHttp(s.dashboardUrl)) e.dashboardUrl = 'blank, or http://<laptop-ip>:8081';
+  if (s.signal === 'bridge' && !isHttp(s.readerBridgeUrl)) e.readerBridgeUrl = 'http://<laptop-ip>:8766';
   const int = (k: keyof Settings, v: number, lo: number, hi: number, hint: string) => {
     if (!Number.isInteger(v) || v < lo || v > hi) e[k] = hint;
   };

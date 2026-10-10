@@ -57,6 +57,8 @@ const config: ExpoConfig = {
     appleTeamId: process.env.APPLE_TEAM_ID || undefined,
     infoPlist: {
       NSCameraUsageDescription: 'The observer camera finds people, drones and birds on the phone, offline.',
+      // The BLE IFF reader bridge and the dashboard sit on the laptop on the same hotspot LAN.
+      NSLocalNetworkUsageDescription: 'Reaches the IFF reader bridge and the dashboard on the laptop over the local network.',
     },
   },
   web: { favicon: './assets/favicon.png' },
