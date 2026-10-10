@@ -1,0 +1,284 @@
+# FriendOrFoe
+
+Android app that detects drones with the phone camera, on-device and offline (ClikaRT), and runs a
+replay-proof, relay-resistant, radio-silent friend-or-foe check on each detected drone, drawing a green
+ring (`FRIEND · id`) or a red ring (`FOE · reason`) on the exact object in the image. The challenge-response
+"signal" comes from our own gadgets connected to the phone over USB; a second phone showing a QR code
+stands in for the gadget while the hardware is not attached.
+
+Hackathon entry for track **T1 UAS & CUAS** (guidance item **T1-04 Radio-silent IFF**) and sub-track
+**SC1 CLIKA BYOD Offline AI Challenge** (app built with ClikaRT, live demo with the network blocked, code
+repository, bonus for two or more device types). Everything in this repository was built during the
+hackathon; see [What pre-existed vs. what we built](#what-pre-existed-vs-what-we-built).
+
+---
+
+## 1. Team and ownership
+
+Three developers, three parallel streams, one integration lead. Every stream has its own folders, its own
+branches and a fake implementation of the other streams' interfaces, so nobody waits for anybody.
+
+| Stream | Owner | GitHub | Owns (folders) | First deliverable |
+|---|---|---|---|---|
+| **1 · Video object detection** | Chloe Yeo | @chloeyeo | `app/.../camera`, `app/.../detect`, `app/.../app` (runtime bring-up, license, models), Gradle/manifest, `eval/` | Live boxes on a person and a drone target, on the phone, airplane mode (H4) |
+| **2 · Challenge-response (질의응답)** | Ihan | @angmusae2015 | `iff/` (pure Kotlin protocol module + tests + vectors), `app/.../signal` (USB gadget link, optical QR fallback), `app/.../responder` (logic), `docs/PROTOCOL.md`, `docs/GADGET_LINK.md` | `./gradlew :iff:test` green with vectors for every verdict; gadget answers over USB (H7) |
+| **3 · UI frontend** | Yoo Jongho | @ujon | `app/.../ui` (camera overlay, status strip, signal panel, settings, event log, responder screen, mode picker), `laptop/dashboard`, screenshots and demo video | Overlay renders rings and tags from a fake scenario, no camera needed (H4) |
+| **Integration lead** | Chloe | @chloeyeo | wiring in `app/.../session`, demo rehearsals, `.planning/` (GSD docs) | End-to-end green ring on the devices (H10) |
+
+If you want to swap streams, say so in the group chat before H1 and edit this table in a `docs:` PR.
+
+---
+
+## 2. What the demo looks like (3 minutes)
+
+1. Phone A (airplane mode, Wi-Fi off except our own LAN) points at a drone target with a teammate in
+   frame. Two boxes: `drone · ?` (amber) and `person`. The laptop mirrors phone A over USB (scrcpy).
+2. Tap the drone box. The phone sends one authenticated challenge (fresh 128-bit nonce) to the gadget over
+   USB; the gadget runs the radio challenge-response and reports the answer with signal strength and
+   response time. The ring turns **green: `FRIEND · RQ-07 · −58 dBm · 42 ms`**.
+3. Press **Replay** on the responder: red ring, `FOE · replayed nonce`.
+4. Press **Relay** (answer carries a far-away position / arrives late): red ring, `FOE · position mismatch`
+   or `FOE · late response`.
+5. Press **Silent**: red ring, `UNKNOWN · no response`. Silence is never FRIEND.
+6. Closing line: the drone transmitted nothing until asked, and its answer only works for the one observer
+   who asked, at the place it is actually flying, within the time it should have taken.
+
+Three layers of evidence back every verdict: **crypto** (HMAC tag with a fresh nonce) proves *who*
+answered, **geometry** (position gate, the answer is attributed to the box the camera sees) proves *where*,
+and **physics** (round-trip timing, radio signal strength, optical persistence) proves *when and how near*.
+
+---
+
+## 3. Architecture and base code modules
+
+```
+ phone A (observer)                                                     laptop
+ ┌──────────────────────────────────────────────────────────────┐      ┌───────────────────────┐
+ │ camera/   CameraX Preview + ImageAnalysis (RGBA, ~1 fps)      │      │ scrcpy mirror (USB)   │
+ │    │                                                         │      │ laptop/dashboard      │
+ │    ▼                                                         │ HTTP │   FastAPI /dashboard  │
+ │ detect/   Detector ──► ClikaRtDetector (RT-DETR v2, in-proc) │─────►│   POST /api/events    │
+ │             ├──► HttpDetector (laptop serve, contingency)    │      │ clikart-cli serve     │
+ │             └──► FakeDetector (UI dev, scripted boxes)       │      │   --offline (eval,    │
+ │    │ boxes                                                   │      │   2nd ClikaRT device) │
+ │    ▼                                                         │      └───────────────────────┘
+ │ track/    box ids, challenge-window lock                     │
+ │    │                                                         │        gadgets (USB OTG)
+ │    ▼            challenge ▲        ▼ answer + rssi + ms      │      ┌───────────────────────┐
+ │ session/  IffCoordinator ──► signal/ SignalSource ───────────┼─USB─►│ reader / responder    │
+ │    │  verdict            ├──► UsbGadgetSignalSource          │      │ (Ihan's hardware)     │
+ │    │                     ├──► OpticalQrSignalSource (phone B)│      └───────────────────────┘
+ │    │                     └──► FakeSignalSource (demo script) │
+ │    ▼                                                         │        phone B (fallback responder)
+ │ iff/  (pure Kotlin module) Challenger · Responder · Verifier │      ┌───────────────────────┐
+ │       NonceLedger · PositionGate · PhysicalGates · Codec     │      │ same APK, Responder   │
+ │    │                                                         │      │ mode: QR answer +     │
+ │    ▼                                                         │      │ Honest/Replay/Relay/  │
+ │ ui/   CameraScreen (rings, tags) · StatusStrip · SignalPanel │      │ Silent/Impostor/Late  │
+ │       SettingsScreen · EventLogScreen · ResponderScreen      │      └───────────────────────┘
+ └──────────────────────────────────────────────────────────────┘
+```
+
+### Gradle modules
+
+| Module | Kind | Purpose | Tests |
+|---|---|---|---|
+| `:app` | Android (Compose, CameraX, ML Kit barcode, ClikaRT AAR) | The phone app, both roles (Observer / Responder) | `:app:testDebugUnitTest` for pure logic (tracker, transforms, state) |
+| `:iff` | Pure Kotlin JVM, **no Android imports** | The challenge-response protocol: message codecs, key derivation, nonce ledger, verifier, position gate, physical gates, JSON test vectors | `:iff:test` runs on any laptop, no device |
+
+### Package map (`com.chloeyeo.friendorfoe`)
+
+| Package | Stream | Contents |
+|---|---|---|
+| `app/` | 1 | `FofApplication` (ClikaRT bring-up on one runtime lane, license from `BuildConfig`/private storage, model directory), `Prefs` |
+| `camera/` | 1 | `CameraController` (Preview + ImageAnalysis, KEEP_ONLY_LATEST, 1280×720 or 1920×1080, landscape locked), `FrameTransform` (analysis frame → preview coordinates) |
+| `detect/` | 1 | `Detector` interface, `Detection`, `ObjClass` (PERSON, DRONE), `LabelMap` (RT-DETR `labelId` 0 → person, 4/14/33 → drone), `ClikaRtDetector`, `HttpDetector`, `FakeDetector`, `Detectors.create(config)` |
+| `track/` | 1 | `Tracker` (IoU matching, stable ids), `BoxLock` (freeze the tapped box for the 10 s window) |
+| `signal/` | 2 | `SignalSource` interface, `UsbGadgetSignalSource` (USB CDC serial, newline-delimited JSON), `OpticalQrSignalSource` (ML Kit QR decode inside the locked box), `FakeSignalSource` (scripted answers) |
+| `responder/` | 2 (logic) + 3 (screen) | `ResponderServer` (one HTTP endpoint for the phone-B fallback), `ResponderState`, `QrRenderer` (ZXing, raw bytes, QR version ≤ 4), attack modes |
+| `session/` | lead | `IffCoordinator` (tap → challenge → wait for answer → verify → verdict → events), `ObserverUiState` (the only thing the UI renders), `EventLog` |
+| `net/` | 1 | `EventClient` (fire-and-forget POST to the laptop dashboard), `HttpDetector` transport |
+| `ui/` | 3 | `CameraScreen` + `OverlayPainter` (rings, tags, countdown), `StatusStrip`, `SignalPanel`, `SettingsScreen`, `EventLogScreen`, `ResponderScreen`, `ModePicker`, theme |
+
+### The three contracts (freeze by H1, change only via a `[shared]` PR)
+
+```kotlin
+// detect/Detector.kt — stream 1 provides, everyone consumes
+interface Detector {
+    fun detect(frame: Frame): List<Detection>          // boxes in frame pixels, score-descending
+    val name: String
+}
+data class Detection(val cls: ObjClass, val score: Float, val box: RectF)
+enum class ObjClass { PERSON, DRONE }
+
+// signal/SignalSource.kt — stream 2 provides, the session consumes
+interface SignalSource {
+    suspend fun challenge(req: ChallengeRequest): Flow<SignalEvent>   // answers, timing, rssi as they arrive
+    val kind: SignalKind                                               // USB_GADGET, OPTICAL_QR, FAKE
+}
+data class ChallengeRequest(val nonce: ByteArray, val t: Long, val challengerId: Int, val boxId: Int)
+sealed interface SignalEvent {
+    data class Answer(val raw: ByteArray, val rssiDbm: Int?, val responseMs: Long, val source: SignalKind) : SignalEvent
+    data class Status(val text: String) : SignalEvent
+}
+
+// session/ObserverUiState.kt — the session produces, stream 3 renders
+data class ObserverUiState(
+    val tracks: List<TrackUi>,       // id, cls, box (preview coords), iff: IffState
+    val status: StatusUi,            // detector name, msPerFrame, fps, modelReady, offline, gadgetConnected, rssi
+    val signal: List<SignalUi>,      // latest answers with rssi / ms / verdict, newest first
+    val events: List<EventUi>,       // event log rows
+)
+sealed interface IffState { object Unchallenged; data class Challenged(val until: Long); data class Verdict(val kind: VerdictKind, val reason: String?, val droneId: String?, val rssiDbm: Int?, val roundTripMs: Long?) }
+```
+
+`DemoScenario` (in `session/`) produces a scripted `ObserverUiState` sequence (drone appears, challenge,
+green, replay red, silent unknown) so the UI stream can build and screenshot every state without a camera,
+a model or a gadget.
+
+### Protocol FOF-1 in one paragraph (details in `docs/PROTOCOL.md`, owner: stream 2)
+
+Keys: one pre-placed 32-byte master key → day key = HMAC(master, "FOF-day" ‖ YYYYMMDD) → per-drone key =
+HMAC(dayKey, "FOF-drone" ‖ droneId); observer accepts yesterday/today/tomorrow. **Challenge** (observer →
+responder, one burst): `{v=1, nonce16, t, challengerId, cmac8 = HMAC(dayKey, "C" ‖ nonce ‖ t ‖ challengerId)}`;
+the responder answers only authenticated challenges, so an enemy cannot make our drone light up. **Response**
+(responder → observer, directional, short range): `{v=1, droneId, nonce[0:8], pos quantized (lat/lon 1e-4°,
+alt 10 m), tag16 = HMAC(droneKey, "R" ‖ nonce ‖ t ‖ challengerId ‖ droneId ‖ pos)}`; every MAC is over a fixed
+binary layout, never JSON text. **Verify order**: read from the right source for the locked box (attribution)
+→ nonce issued, unused, under 10 s (`replayed nonce`) → tag recomputes (`bad tag`) → position within the box
+cone / near-field (`position mismatch`) → round-trip within budget (`late response`) → RSSI floor and
+consistency (`signal mismatch`) → optical persistence when the answer is a QR (`optical mismatch`). Any
+failure is FOE with that reason; no answer in 10 s is UNKNOWN; silence is never FRIEND.
+
+### Gadget link over USB (draft, owner: stream 2, file `docs/GADGET_LINK.md`)
+
+USB CDC serial (the phone is USB host over OTG; library `com.github.mik3y:usb-serial-for-android`),
+115200 8N1, one JSON object per line.
+
+```
+phone → gadget   {"cmd":"challenge","nonce":"<32 hex>","t":1760000000,"challengerId":7}
+                 {"cmd":"status"}
+gadget → phone   {"type":"answer","raw":"<base64 of the FOF-1 response bytes>","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}
+                 {"type":"noAnswer","responseMs":10000}
+                 {"type":"status","fw":"0.1","battery":3.9}
+```
+
+If the gadget verifies the answer itself, it may add `"verdict":"FRIEND|FOE|UNKNOWN","reason":"..."`; the phone
+still re-verifies whatever it can (nonce, timing, RSSI) and shows the stricter result. Ihan decides what the
+gadget actually is (radio, MCU, firmware) and updates this section; the phone side only depends on the lines
+above.
+
+---
+
+## 4. Plan
+
+The detailed plan lives in `.planning/` (GSD): `ROADMAP.md` (phases, success criteria, research flags),
+`REQUIREMENTS.md` (54 requirement IDs), `research/` (stack, features, architecture, pitfalls with sources).
+The roadmap was written for one developer in series; with three of us, Phases 2, 3 and 4 run **in parallel**
+and meet at the integration checkpoints below.
+
+| When | Stream 1 · Detection (Chloe) | Stream 2 · Challenge-response (Ihan) | Stream 3 · UI (Jongho) |
+|---|---|---|---|
+| **H0–1 Foundation** (lead) | Skeleton PR: `:iff` module, package stubs, the three contracts, Gradle wiring (`clikaRtMavenRepo` property, arm64 only, BuildConfig license), `local.properties.example` | Read `docs/PROTOCOL.md` draft and `.planning/research/ARCHITECTURE.md`; decide the gadget link | Read the contracts; sketch the five screens |
+| **H1–4** | CameraX preview → `ClikaRtDetector` → boxes (`labelId` map, thresholds), `FrameTransform`, `Tracker`, `BoxLock`; **H4 hard checkpoint**: if the AAR does not run, flip `Detectors.create` to `HttpDetector` and keep going | `:iff`: codecs, key derivation, nonce ledger, verifier, position gate, physical gates as pure functions; JSON vectors from an independent Python generator; `:iff:test` green | `CameraScreen` + `OverlayPainter` from `DemoScenario`; `StatusStrip`; `ModePicker`; theme; big fonts for judges |
+| **H4–7** | Demo target decided (what RT-DETR boxes reliably); status strip numbers; on-device latency tuning; model push script | `UsbGadgetSignalSource` + gadget firmware side; `OpticalQrSignalSource` (ML Kit QR inside the locked box) as fallback; `FakeSignalSource` | `SignalPanel`, `SettingsScreen`, `EventLogScreen`, `ResponderScreen` (QR full-screen, six buttons) |
+| **H7–10** | Integration: `IffCoordinator` wiring tap → challenge → answer → verdict → ring; `EventClient` | Responder fallback on phone B (`ResponderServer`, `QrRenderer`, attack modes); gadget end-to-end over USB | `laptop/dashboard` (FastAPI page, no CDN), scrcpy mirror, screenshots |
+| **H10 checkpoint** | **End-to-end green ring on the devices** (gadget or phone-B fallback), replay red, silent unknown | | |
+| **H10–14** | Eval set + `eval/run_eval.py`, detector/threshold choice, OWLv2 option (bench first) | Relay/Impostor/Late modes, physical gates wired (timing, RSSI, optical), `docs/PROTOCOL.md` threat table | Polish: countdown on the box, reasons legible at 2 m, reset button, demo mode switch |
+| **H14 checkpoint** | **Three timed run-throughs of the 3-minute script with the network blocked**, backup video recorded | | |
+| **H14–20** | README numbers (load time, ms/frame, APK size), final integration, buffer | `docs/GADGET_LINK.md` final, Q&A card answers on crypto | Pitch visuals, demo video cut, README screenshots |
+
+**Cut order if behind:** audio alert → OWLv2 option → Relay button + position gate → eval table → RSSI gate.
+Never cut: live boxes, the green/red ring with a reason, the offline run, the tests.
+
+---
+
+## 5. Workflow (branches, PRs, syncing)
+
+- **`main` is always demo-able.** It must build (`./gradlew :iff:test :app:assembleDebug`) at every commit.
+  Nobody pushes directly to `main` once the skeleton PR has landed; the only exception is a one-line hotfix in
+  the final two hours, announced in the chat first.
+- **One branch per task, named by stream:** `feat/detect-<topic>` (Chloe), `feat/iff-<topic>` or
+  `feat/signal-<topic>` (Ihan), `feat/ui-<topic>` (Jongho); `fix/<topic>`, `docs/<topic>` for anything else.
+  Branch from the latest `main`: `git fetch origin && git switch -c feat/ui-overlay origin/main`.
+- **Small PRs, merged fast.** Aim for under 400 changed lines and under three hours of life. Title
+  `area: what it does` (`detect: map labelId to person/drone`). Description: what, how you tested (unit test,
+  device, screenshot for UI). One review from another member; if nobody is free within 15 minutes, say so in
+  the chat and self-merge. Squash merge, delete the branch.
+- **Rebase before you open or update a PR:** `git fetch origin && git rebase origin/main`, resolve locally,
+  `git push --force-with-lease`.
+- **Shared files are special.** `settings.gradle.kts`, `app/build.gradle.kts`, `gradle/libs.versions.toml`,
+  `AndroidManifest.xml`, `MainActivity.kt`, `AppNav.kt` and the three contract files change only through a
+  PR titled `[shared] …`, kept tiny and merged first. Everything else lives in your own folders, so conflicts
+  are rare.
+- **Commits:** imperative, prefixed by area (`iff: add nonce ledger`, `ui: draw countdown ring`). Never commit
+  the ClikaRT license, keys, `local.properties`, model weights or APKs (`.gitignore` covers them, and a grep
+  for `CLIKA1-` before pushing is cheap).
+- **Sync points:** merge your branch at least every three hours; everyone is on the latest `main` at the H4,
+  H10 and H14 checkpoints; the demo build is the `main` commit tagged `demo-N`.
+- **Where things are discussed:** the group chat for anything blocking; GitHub issues only for things that
+  survive the day. Planning docs in `.planning/` are maintained by Chloe through GSD; propose changes in the
+  chat rather than editing them in a feature PR.
+
+---
+
+## 6. Setup for every developer
+
+1. Clone and open in Android Studio (the project is Gradle 9.4.1, AGP 9.2.1, Kotlin 2.2.10, compileSdk 36,
+   minSdk 28, JDK 21 toolchain is downloaded automatically).
+2. Copy `local.properties.example` to `local.properties` and fill in:
+   - `sdk.dir` — your Android SDK (Android Studio writes this one).
+   - `clikaRtMavenRepo` — the folder where you extracted `clika-runtime-maven-0.6.4.zip` (it contains
+     `io/clika/clika-runtime-android/0.6.4/*.aar`). Download it from the team project on platform.clika.io.
+     Without it the app module does not resolve; `:iff` builds regardless.
+   - `clika.runtimeLicenseFile` — optional, path to a file holding the `CLIKA1-…` credential. Only the phone
+     that runs on-device detection needs it (the license is an **Offline** bundle with hardware seats; the
+     responder role never loads the runtime).
+3. Build: `./gradlew :iff:test :app:assembleDebug`. The debug APK is about 300 MB because the ClikaRT native
+   libraries are inside it; install over a USB 3 cable (`./gradlew :app:installDebug`), never over the air,
+   and never `adb uninstall` (it deletes the pushed models).
+4. Models on the phone (stream 1 only): fetch on the laptop with
+   `clikart-cli --cache-dir <cache> fetch PekingU/rtdetr_v2_r18vd`, then push the snapshot directory contents
+   to `/sdcard/Android/data/com.chloeyeo.friendorfoe/files/models/rtdetr_v2_r18vd/` with `adb push <snapshot>/. <dest>`.
+5. Laptop extras: Python 3.13 with `fastapi`, `uvicorn`, `requests`, `pillow` for the dashboard and eval;
+   `clikart-cli` from the ClikaRT Windows archive (`bin/` and `lib/` on PATH) for `serve --offline` and
+   the eval; scrcpy for the mirror and the backup video.
+6. UI stream without a phone: run the app on any arm64 phone with `FakeDetector` + `FakeSignalSource`
+   (settings → demo mode), or run the Compose previews from `DemoScenario`.
+
+---
+
+## 7. Open decisions (answer in the chat before H1)
+
+1. **The gadgets.** What exactly is connected over USB (MCU, radio, who writes the firmware), and does the
+   gadget run the FOF-1 crypto itself or only carry the radio while the phone computes the challenge and
+   verifies the answer? This fixes `docs/GADGET_LINK.md` and how much of `:iff` runs on the gadget.
+2. **Phone-B QR fallback.** Keep it as the simulator for when the gadget is not attached (recommended: it
+   also gives the "two device types" story and an honest fallback on stage), or drop it to save ~3 h?
+3. **Position gate indoors.** No GPS fix inside the venue: both sides use configured positions. Decide the
+   Honest/Relay coordinates and whether the near-field rule (< 30 m passes without a bearing) is on.
+4. **Licenses and phones.** Which phone carries the ClikaRT seat for detection; which phone is the fallback
+   responder; who brings the USB OTG cable.
+
+---
+
+## 8. What pre-existed vs. what we built
+
+Pre-existing: ClikaRT 0.6.4 runtime and its Kotlin binding, the public RT-DETR v2 and OWLv2 weights, the
+Android Studio Compose template, CameraX, ML Kit barcode scanning, ZXing, FastAPI, scrcpy.
+Built during the hackathon: everything in this repository — the detector integration, the tracker and box
+lock, the FOF-1 protocol module with its tests and vectors, the USB gadget link, the optical QR fallback,
+the responder mode, the observer UI, the dashboard, the eval, the docs.
+
+---
+
+## 9. Repository layout
+
+```
+app/        Android app (Compose, CameraX, ML Kit barcode, ClikaRT AAR) — packages listed above
+iff/        pure Kotlin protocol module + tests + src/test/resources/vectors/*.json
+laptop/     dashboard/app.py (FastAPI), scripts for serve and model push
+eval/       10+ test images, ground truth JSON, run_eval.py, vector generator
+docs/       PROTOCOL.md, GADGET_LINK.md, PITCH.md (script + Q&A card)
+.planning/  GSD planning docs (ROADMAP, REQUIREMENTS, research)
+```

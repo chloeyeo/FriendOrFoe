@@ -1,0 +1,7 @@
+## Copy to local.properties (gitignored) and fill in. Never commit local.properties.
+# Android SDK (Android Studio writes this line for you)
+sdk.dir=C:\Users\you\AppData\Local\Android\Sdk
+# Folder where clika-runtime-maven-0.6.4.zip is extracted (contains io/clika/clika-runtime-android/0.6.4/*.aar)
+clikaRtMavenRepo=C:/path/to/clika-runtime-maven-0.6.4
+# Optional: file holding the CLIKA1-... credential; only the phone that runs on-device detection needs it
+clika.runtimeLicenseFile=C:/path/to/clikart.license

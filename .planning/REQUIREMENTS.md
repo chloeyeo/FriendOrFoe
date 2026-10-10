@@ -3,7 +3,7 @@
 **Defined:** 2026-10-10
 **Core Value:** Point the phone at a drone and, within seconds and with no network, see a green ring or a red ring with a reason on that exact object — while the drone transmits nothing until asked, and its answer only works for the one observer who asked, at the place it is actually flying.
 
-Categories follow `.planning/research/FEATURES.md` (DET, IFF, RSP, OBS, JDG, EVL, SEC, PIT). IDs are kept identical to FEATURES.md where the feature exists there so the research and the requirements can be cross-read. Hour estimates come from FEATURES.md and are for one developer.
+Categories follow `.planning/research/FEATURES.md` (DET, IFF, RSP, OBS, JDG, EVL, SEC, PIT) plus PHY (physical-layer evidence), added on 2026-10-10 at the user's request. IDs are kept identical to FEATURES.md where the feature exists there so the research and the requirements can be cross-read. Hour estimates come from FEATURES.md and are for one developer.
 
 **Cut order if behind schedule** (user's order, kept; the research's suggested amendment is noted in brackets): DET-08 audio alert → DET-09 OWLv2 option → IFF-06/RSP-07 Relay + position gate → EVL-01/02 eval table. [Research recommends cutting the JDG-02/03 laptop dashboard before any of these, and keeping Relay above the eval table because "resist MITM" is in the T1-04 wording. The user chose the dashboard explicitly on 2026-10-10, so it stays in v1 until the user cuts it.] The PHY checks added on 2026-10-10 at the user's request sit above the cut line: PHY-01 timing and PHY-03 optical consistency are cheap and stay; PHY-02 signal strength is cut only after the eval table.
 
@@ -137,17 +137,72 @@ Explicitly excluded. Documented to prevent scope creep.
 
 ## Traceability
 
-Which phases cover which requirements. Populated during roadmap creation.
+Which phases cover which requirements. Populated during roadmap creation (2026-10-10); see `.planning/ROADMAP.md`.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (filled by the roadmapper) | | |
+| DET-01 | Phase 2 | Pending |
+| DET-02 | Phase 2 | Pending |
+| DET-03 | Phase 2 | Pending |
+| DET-04 | Phase 2 | Pending |
+| DET-05 | Phase 1 | Pending |
+| DET-06 | Phase 2 | Pending |
+| DET-08 | Phase 5 | Pending |
+| DET-09 | Phase 6 | Pending |
+| IFF-01 | Phase 3 | Pending |
+| IFF-02 | Phase 3 | Pending |
+| IFF-03 | Phase 3 | Pending |
+| IFF-04 | Phase 3 | Pending |
+| IFF-05 | Phase 3 | Pending |
+| IFF-06 | Phase 3 | Pending |
+| IFF-08 | Phase 3 | Pending |
+| PHY-01 | Phase 5 | Pending |
+| PHY-02 | Phase 5 | Pending |
+| PHY-03 | Phase 5 | Pending |
+| RSP-01 | Phase 4 | Pending |
+| RSP-02 | Phase 4 | Pending |
+| RSP-03 | Phase 4 | Pending |
+| RSP-04 | Phase 4 | Pending |
+| RSP-05 | Phase 4 | Pending |
+| RSP-06 | Phase 4 | Pending |
+| RSP-07 | Phase 4 | Pending |
+| RSP-08 | Phase 4 | Pending |
+| RSP-09 | Phase 4 | Pending |
+| RSP-12 | Phase 4 | Pending |
+| RSP-13 | Phase 4 | Pending |
+| OBS-01 | Phase 5 | Pending |
+| OBS-02 | Phase 5 | Pending |
+| OBS-03 | Phase 5 | Pending |
+| OBS-04 | Phase 2 | Pending |
+| OBS-05 | Phase 5 | Pending |
+| OBS-06 | Phase 5 | Pending |
+| OBS-10 | Phase 5 | Pending |
+| JDG-01 | Phase 4 | Pending |
+| JDG-02 | Phase 4 | Pending |
+| JDG-03 | Phase 5 | Pending |
+| JDG-04 | Phase 1 | Pending |
+| EVL-01 | Phase 6 | Pending |
+| EVL-02 | Phase 6 | Pending |
+| EVL-03 | Phase 6 | Pending |
+| SEC-01 | Phase 1 | Pending |
+| SEC-02 | Phase 5 | Pending |
+| SEC-03 | Phase 5 | Pending |
+| SEC-04 | Phase 3 | Pending |
+| PIT-01 | Phase 6 | Pending |
+| PIT-02 | Phase 7 | Pending |
+| PIT-03 | Phase 6 | Pending |
+| PIT-04 | Phase 2 | Pending |
+| PIT-05 | Phase 6 | Pending |
+| PIT-06 | Phase 7 | Pending |
+| PIT-07 | Phase 1 | Pending |
+
+**Per phase:** Phase 1 — SEC-01, JDG-04, PIT-07, DET-05 (4) · Phase 2 — DET-01, DET-02, DET-03, DET-04, DET-06, OBS-04, PIT-04 (7) · Phase 3 — IFF-01, IFF-02, IFF-03, IFF-04, IFF-05, IFF-06, IFF-08, SEC-04 (8) · Phase 4 — RSP-01, RSP-02, RSP-03, RSP-04, RSP-05, RSP-06, RSP-07, RSP-08, RSP-09, RSP-12, RSP-13, JDG-01, JDG-02 (13) · Phase 5 — OBS-01, OBS-02, OBS-03, OBS-05, OBS-06, OBS-10, PHY-01, PHY-02, PHY-03, JDG-03, SEC-02, SEC-03, DET-08 (13) · Phase 6 — EVL-01, EVL-02, EVL-03, DET-09, PIT-01, PIT-03, PIT-05 (7) · Phase 7 — PIT-02, PIT-06 (2).
 
 **Coverage:**
-- v1 requirements: 59 total
-- Mapped to phases: 0
-- Unmapped: 59 ⚠️ (roadmap pending)
+- v1 requirements: 54 total (the figure of 59 recorded at definition time was a miscount; 54 IDs are defined above — DET 8, IFF 7, PHY 3, RSP 11, OBS 7, JDG 4, EVL 3, SEC 4, PIT 7)
+- Mapped to phases: 54
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-10-10*
-*Last updated: 2026-10-10 after initial definition*
+*Last updated: 2026-10-10 after roadmap creation (traceability filled)*
