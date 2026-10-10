@@ -648,7 +648,7 @@ override fun onCreate(b: Bundle?) {
 | A8 | `run-as … cp` from `/data/local/tmp` is readable by the app uid (worked in Phase 1 per STATE.md) | M | Fallback: `adb push` to `/sdcard/Download` then `run-as cp` |
 | A9 | Polling the offline probe at tick rate (not callbacks) satisfies OBS-04 | O | The badge lags ≤ 1 s behind a toggle — acceptable |
 
-## Open Questions
+## Open Questions (RESOLVED — each is answered by a phone task: Q1 02-05 T1/T3, Q2 02-04 T2 + 02-05 T1, Q3 02-06 T1/T3, Q4 02-06 T2/T3, Q5 02-06 T1)
 
 1. **Does the Offline license bundle run on phone A in airplane mode?**
    - What we know: the bundle is one 3258-byte `CLIKA1…` line, embedded via BuildConfig; the laptop runs `--offline` detections with it; the runtime binds licenses to `ANDROID_ID` and seats are per hardware.
