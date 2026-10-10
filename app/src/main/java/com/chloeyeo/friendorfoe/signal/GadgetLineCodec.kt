@@ -3,6 +3,7 @@ package com.chloeyeo.friendorfoe.signal
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import org.json.JSONTokener
 
 /**
  * Ihan's reader protocol (firmware/reader/reader.ino, firmware/README.md; docs/GADGET_LINK.md): plain-text command
@@ -124,14 +125,19 @@ object GadgetLineCodec {
     /**
      * Parses one reader line. Null for a blank line (the C3 writes one bare LF to wake its USB flag). A line that is
      * not a JSON object is [ReaderEvent.Text]. Throws [IllegalArgumentException] (and nothing else) for a JSON line
-     * that is broken, or one of the events above with a missing or wrong-typed field.
+     * that is broken, has anything after its closing brace, or is one of the events above with a missing or
+     * wrong-typed field.
      */
     fun parse(line: String): ReaderEvent? {
         val text = line.trim()
         if (text.isEmpty()) return null
         if (!text.startsWith("{")) return ReaderEvent.Text(text)
         val obj = try {
-            JSONObject(text)
+            val tokens = JSONTokener(text)
+            val value = tokens.nextValue() as? JSONObject
+            // JSONObject(String) stops at the closing brace; anything after it means two lines glued together.
+            require(value != null && !tokens.more()) { "reader line is not exactly one JSON object" }
+            value
         } catch (e: JSONException) {
             throw IllegalArgumentException("reader line is not a valid JSON object", e)
         }

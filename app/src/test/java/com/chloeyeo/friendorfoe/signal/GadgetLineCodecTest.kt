@@ -161,6 +161,9 @@ class GadgetLineCodecTest {
             """{"event":"TX_CHALLENGE","request_id":"r1","nonce":"0011","result":"BROADCAST_STARTED"}""",
             """{"event":"STATE","boot_id":7,"request_id":"","state":"IDLE","reason":"BOOT"}""",
             """{"event":"RESULT","request_id":"r1","response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":1,"rssi":900}""",
+            """{"event":"ACK","request_id":"r1","accepted":true,"reason":"ACCEPTED"}x""",
+            """{"event":"ACK","request_id":"r1","accepted":true,"reason":"ACCEPTED"} {"event":"ACK"}""",
+            """{"event":"RESULT","request_id":"r1","query":1,"response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":1,"elapsed_ms":1,"replay":false}{"event":"STATE","boot_id":"b","request_id":"r1","state":"IDLE","reason":"CHANGED"}""",
         )
         for (line in bad) assertThrows(line, IllegalArgumentException::class.java) { GadgetLineCodec.parse(line) }
     }
