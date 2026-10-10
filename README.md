@@ -232,9 +232,15 @@ signal source (it is the on-stage fallback if the gadget misbehaves).
   the `firmware/selftest` sketch compiles and passes on the board) at every commit.
   Nobody pushes directly to `main` once the skeleton PR has landed; the only exception is a one-line hotfix in
   the final two hours, announced in the chat first.
-- **One branch per task, named by stream:** `feat/detect-<topic>` (Chloe), `feat/iff-<topic>` or
-  `feat/signal-<topic>` (Ihan), `feat/ui-<topic>` (Jongho); `fix/<topic>`, `docs/<topic>` for anything else.
-  Branch from the latest `main`: `git fetch origin && git switch -c feat/ui-overlay origin/main`.
+- **One personal branch per developer, already created on GitHub:** `chloe`, `ihan`, `jongho`, `dawud`.
+  Start with `git fetch origin && git switch <your-name>`, work there, and keep it current with
+  `git fetch origin && git rebase origin/main` before every push (`git push --force-with-lease origin <your-name>`).
+  Open a PR from your branch to `main` whenever a slice works; after the merge, rebase your branch again.
+  Optional topic branches off your own branch (`chloe/camerax`, `ihan/selftest`) are fine for experiments.
+- **Codex users (Ihan, Jongho):** Codex reads `AGENTS.md` at the repo root (the project guide; `CLAUDE.md` just
+  includes it). Point Codex at your own branch, let it commit there, and ask it to run the build command
+  for your stream before each push (`./gradlew :app:testDebugUnitTest :app:assembleDebug` for app code,
+  the `selftest` sketch for firmware). Never let an agent push to `main` directly.
 - **Small PRs, merged fast.** Aim for under 400 changed lines and under three hours of life. Title
   `area: what it does` (`detect: map labelId to person/drone`). Description: what, how you tested (unit test,
   device, screenshot for UI). One review from another member; if nobody is free within 15 minutes, say so in
