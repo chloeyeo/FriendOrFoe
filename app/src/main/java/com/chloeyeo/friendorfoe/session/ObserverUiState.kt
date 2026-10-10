@@ -19,10 +19,20 @@ data class ObserverUiState(
     val events: List<EventUi> = emptyList(),
 )
 
-/** One drawn box: the tracker id (the id a tap challenges), its class, its box in preview pixels, its IFF state. */
-data class TrackUi(val id: Int, val cls: ObjClass, val box: BoxF, val iff: IffState)
+/**
+ * One drawn box: the tracker id (the id a tap challenges), its class, its box in preview pixels, its IFF state.
+ *
+ * @property score the detector score of the track's latest detection (0..1), shown on the box label; `0f` when not
+ *   known (a lock whose object was lost, or a [DemoScenario] row that does not set it)
+ */
+data class TrackUi(val id: Int, val cls: ObjClass, val box: BoxF, val iff: IffState, val score: Float = 0f)
 
-/** The status strip: detector and timing numbers, runtime and link health. */
+/**
+ * The status strip: detector and timing numbers, runtime and link health.
+ *
+ * @property modelNote free text from the model loader for the strip — `model loading… 3 s`,
+ *   `load 3.2 s · warm 1400 ms`, or a ClikaRT code name such as `LICENSE_FAILED` on failure; never the credential
+ */
 data class StatusUi(
     val detectorName: String = "none",
     val msPerFrame: Long = 0L,
@@ -31,6 +41,7 @@ data class StatusUi(
     val offline: Boolean = true,
     val gadgetConnected: Boolean = false,
     val rssiDbm: Int? = null,
+    val modelNote: String? = null,
 )
 
 /** One row of the signal/gadget panel: the gadget's latest answer after the phone's re-checks. */
