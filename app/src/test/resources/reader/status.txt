@@ -1,0 +1,2 @@
+# Reply to STATUS <id>, built from reader.ino status() (no reader STATUS was captured).
+{"event":"STATUS","request_id":"@SID@","role":"reader","interface_version":2,"boot_id":"@BOOT@","manual_query":true,"response_timeout_ms":3000,"key_configured":true,"radio_ready":true,"state":"IDLE","active_request_id":"","last_result":null}

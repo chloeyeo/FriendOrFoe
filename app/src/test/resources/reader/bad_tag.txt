@@ -1,0 +1,9 @@
+# Not captured (0 AUTH_FAILED in 72 trials): built from reader.ino's ack/stateEvent/logPacket/Completed::json
+# format strings. A current-nonce answer with a wrong HMAC tag: the reader keeps waiting, then gives
+# UNKNOWN/AUTH_FAILED at 3000 ms with response_received true.
+{"event":"ACK","request_id":"@ID@","accepted":true,"reason":"ACCEPTED","state":"QUERYING"}
+{"event":"STATE","boot_id":"@BOOT@","request_id":"@ID@","state":"QUERYING","reason":"CHANGED"}
+{"event":"TX_CHALLENGE","request_id":"@ID@","query":1,"at_ms":8104,"elapsed_ms":0,"bytes":38,"version":1,"type":1,"reader_id":1,"drone_id":1,"nonce":"44ad3f50c8539c3d2121b4cb9e7e1e25","tag":"612e4fc4fdcd1f5958c7b557004bdda7","result":"BROADCAST_STARTED"}
+{"event":"RX_RESPONSE","request_id":"@ID@","query":1,"at_ms":8316,"elapsed_ms":212,"bytes":38,"version":1,"type":2,"reader_id":1,"drone_id":1,"nonce":"44ad3f50c8539c3d2121b4cb9e7e1e25","tag":"00000000000000000000000000000000","result":"AUTH_FAILED"}
+{"event":"RESULT","request_id":"@ID@","query":1,"response_received":true,"verdict":"UNKNOWN","reason":"AUTH_FAILED","response_ms":212,"elapsed_ms":3000,"replay":false}
+{"event":"STATE","boot_id":"@BOOT@","request_id":"@ID@","state":"IDLE","reason":"CHANGED"}

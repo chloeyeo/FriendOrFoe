@@ -1,0 +1,8 @@
+# Lines that must never change a verdict: RX_RESPONSE IGNORED_NOT_WAITING (captured, adv600.json),
+# IGNORED_LATE_RESPONSE and IGNORED_NONCE_MISMATCH (reader.ino acceptResponse), a RESULT and an ACK for
+# another host's request id, a STATE for it.
+{"event":"RX_RESPONSE","request_id":"@ID@","query":1,"at_ms":8727,"elapsed_ms":623,"bytes":38,"version":1,"type":2,"reader_id":1,"drone_id":1,"nonce":"44ad3f50c8539c3d2121b4cb9e7e1e25","tag":"3ada182c07bc22049b25bb3fc8326391","result":"IGNORED_NOT_WAITING"}
+{"event":"RX_RESPONSE","request_id":"@ID@","query":1,"at_ms":8727,"elapsed_ms":3004,"bytes":38,"version":1,"type":2,"reader_id":1,"drone_id":1,"nonce":"44ad3f50c8539c3d2121b4cb9e7e1e25","tag":"3ada182c07bc22049b25bb3fc8326391","result":"IGNORED_LATE_RESPONSE"}
+{"event":"RX_RESPONSE","request_id":"@ID@","query":1,"at_ms":8727,"elapsed_ms":623,"bytes":38,"version":1,"type":2,"reader_id":1,"drone_id":1,"nonce":"00112233445566778899aabbccddeeff","tag":"3ada182c07bc22049b25bb3fc8326391","result":"IGNORED_NONCE_MISMATCH"}
+{"event":"ACK","request_id":"2f3bbff70e654663a1c7ecc725b4c1fc","accepted":true,"reason":"ACCEPTED","state":"QUERYING"}
+{"event":"RESULT","request_id":"2f3bbff70e654663a1c7ecc725b4c1fc","query":7,"response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":120,"elapsed_ms":120,"replay":false}

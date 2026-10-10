@@ -1,0 +1,8 @@
+# What setup() prints after a reset (reader.ino setup, FofBoard.h KeyStore::begin and Radio::begin;
+# FofEventLog.h's bare wake LF). Text lines end in CRLF on the wire; the loader feeds them with CRLF.
+# Not captured on hardware: exact order and any ESP ROM text before it are unverified.
+
+KEY: stored
+RADIO: BLE5 extended broadcast; whole 38-byte message; no peer MAC
+{"event":"STATE","boot_id":"@BOOT@","request_id":"","state":"IDLE","reason":"BOOT"}
+{"event":"STATUS","request_id":"","role":"reader","interface_version":2,"boot_id":"@BOOT@","manual_query":true,"response_timeout_ms":3000,"key_configured":true,"radio_ready":true,"state":"IDLE","active_request_id":"","last_result":null}

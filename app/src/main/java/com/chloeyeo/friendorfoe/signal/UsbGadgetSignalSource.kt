@@ -15,10 +15,7 @@ import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -26,22 +23,19 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The real gadget link over USB (docs/GADGET_LINK.md, SIG-01). The phone is USB host (OTG); the reader gadget
- * enumerates as a USB serial device (CDC ACM, or a CP210x/CH34x/FTDI bridge) and is opened with
- * usb-serial-for-android at 115200 8N1 with DTR asserted. One JSON object per line, encoded/decoded by
- * [GadgetLineCodec], split by [LineSplitter] (`\n`, `\r\n` tolerated, 512 bytes max).
+ * The real gadget link over USB (docs/GADGET_LINK.md, SIG-01): Ihan's ESP32-C3 reader on its built-in
+ * USB-Serial/JTAG (CDC ACM, 303a:1001), opened with usb-serial-for-android at 115200. The protocol (plain-text
+ * commands in, JSON lines out, the STATUS handshake, request-id attribution, timeouts) lives in [ReaderLink]; this
+ * class only finds, opens, reads and closes the port.
  *
  * Lifecycle: [start] registers for USB attach/detach and the permission answer and polls every 2 s; the first
- * serial device found is asked for permission once per attach (system dialog), then opened; `{"cmd":"status"}` is
- * written on open. A reader thread turns lines into [SignalEvent]s: while a [challenge] is open they go to its
- * flow, otherwise they go to [listener] (status replies, answers with no open challenge, skipped lines). Which
- * challenge an answer belongs to is decided by [AnswerRouter] (the `seq` echo, `gadget busy` after a silent
- * window, the age check), so a stale answer is never drawn on the next tapped box. Unplug,
- * a read error or a detach broadcast closes the port and reports `connected = false`; the 2 s poll reopens it on
- * re-plug. Nothing here touches the network, and no USB error crashes the app.
+ * serial device found is asked for permission once per attach (system dialog), then opened and handed to [link],
+ * which starts the STATUS handshake. The reader
+ * thread feeds every byte to [link] in a loop (the C3 only sends while the host reads). Unplug, a read or write
+ * error, or a detach broadcast closes the port; the 2 s poll reopens it on re-plug. No USB error crashes the app.
  *
- * Threading: connection management runs on one `gadget-link` thread, reading on one `gadget-read` thread per
- * open port; [challenge] writes from the caller's coroutine (on [Dispatchers.IO]).
+ * Threading: connection management and [ReaderLink.tick] (every 250 ms) on one `gadget-link` thread, reading on one
+ * `gadget-read` thread per open port; [challenge] writes from the caller's coroutine.
  *
  * @param prober the driver lookup; [UsbSerialProber.getDefaultProber] knows CDC ACM (by interface class), FTDI,
  *   CP210x, CH34x and Prolific. A board the default table misses needs [proberWithCdcAcm].
@@ -55,16 +49,20 @@ class UsbGadgetSignalSource(
 
     /** Link state and lines that belong to no challenge; called on the link and reader threads. */
     interface Listener {
+        /** [connected] once the port is open AND the reader answered the handshake; false on any loss. */
         fun onLink(connected: Boolean, note: String)
         fun onLine(text: String)
 
-        /** An answer that belongs to no open challenge (stale or unclaimed), with why it was not delivered. */
+        /** A RESULT for one of this phone's earlier queries, after its challenge ended: never drawn. */
         fun onStaleAnswer(answer: SignalEvent.Answer, why: String) {
-            onLine("$why · ${answer.verdict} · nonce ${Redact.nonce(answer.nonce)}")
+            onLine("$why · ${answer.verdict}")
         }
     }
 
     @Volatile var listener: Listener? = null
+
+    /** The protocol engine; exposed for the status strip (reader state) and tests. */
+    val link = ReaderLink(clock)
 
     private val app = context.applicationContext
     private val manager: UsbManager? = app.getSystemService(UsbManager::class.java)
@@ -75,15 +73,13 @@ class UsbGadgetSignalSource(
     /** The open port; null while no gadget is connected. Written on the link thread only. */
     @Volatile private var port: UsbSerialPort? = null
 
-    /** The open challenge and the stale one that may still answer; at most one open (the coordinator refuses a second tap). */
-    private val router = AnswerRouter(clock)
-
     private val writeLock = Any()
 
     /** Link thread only: the device already asked for permission, so the dialog is not raised every 2 s. */
     private var askedFor: String? = null
     private var reportedUnknown: String? = null
 
+    /** The port is open (the reader may still be handshaking; a tap then waits briefly or says `gadget not ready`). */
     val isConnected: Boolean get() = port != null
 
     private val receiver = object : BroadcastReceiver() {
@@ -102,6 +98,22 @@ class UsbGadgetSignalSource(
         }
     }
 
+    init {
+        link.listener = object : ReaderLink.Listener {
+            override fun onLine(text: String) {
+                listener?.onLine(text)
+            }
+
+            override fun onReader(ready: Boolean, note: String) {
+                listener?.onLink(ready && port != null, note)
+            }
+
+            override fun onStaleAnswer(answer: SignalEvent.Answer, why: String) {
+                listener?.onStaleAnswer(answer, why)
+            }
+        }
+    }
+
     /** Starts watching USB; idempotent and cheap with nothing plugged in. */
     fun start() {
         if (manager == null || closed || !started.compareAndSet(false, true)) return
@@ -115,30 +127,12 @@ class UsbGadgetSignalSource(
         runCatching { ContextCompat.registerReceiver(app, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED) }
             .onFailure { Log.w(TAG, "USB receiver not registered; polling only", it) }
         ex.scheduleWithFixedDelay({ guarded { poll() } }, 0L, POLL_MS, TimeUnit.MILLISECONDS)
+        ex.scheduleWithFixedDelay({ guarded { if (port != null) link.tick() } }, TICK_MS, TICK_MS, TimeUnit.MILLISECONDS)
     }
 
     override suspend fun challenge(req: ChallengeRequest): Flow<SignalEvent> {
-        val p = port ?: throw GadgetUnavailableException("no gadget")
-        val open = router.begin(req.boxId) // throws `gadget busy` while the last silent challenge may still answer
-        try {
-            withContext(Dispatchers.IO) { writeLine(p, GadgetLineCodec.encodeChallenge(req, open.seq)) }
-        } catch (e: IOException) {
-            router.abort(open)
-            onLink { drop(p, "gadget write failed") }
-            throw GadgetUnavailableException("gadget write failed", e)
-        }
-        return flow {
-            try {
-                emit(SignalEvent.Status("challenge sent · box ${req.boxId} · seq ${open.seq}"))
-                // An inbox closed with a cause (unplug mid-challenge) rethrows GadgetUnavailableException here.
-                for (event in open.inbox) {
-                    emit(event)
-                    if (event is SignalEvent.Answer) break
-                }
-            } finally {
-                router.finish(open)
-            }
-        }
+        if (port == null) throw GadgetUnavailableException(ReaderLink.NO_GADGET)
+        return link.challenge(req)
     }
 
     override fun close() {
@@ -148,7 +142,7 @@ class UsbGadgetSignalSource(
         executor?.shutdownNow()
         port?.let(::closeQuietly)
         port = null
-        router.failAll(GadgetUnavailableException("gadget link closed"))
+        link.detach("gadget link closed")
     }
 
     // ---- link thread ----
@@ -223,13 +217,11 @@ class UsbGadgetSignalSource(
             return
         }
         port = p
-        listener?.onLink(true, "gadget connected · ${ids(device)} · ${driver.javaClass.simpleName}")
+        listener?.onLine(
+            "gadget port open · ${ids(device)} · ${driver.javaClass.simpleName} · handshaking",
+        )
         Thread({ readLoop(p) }, "gadget-read").apply { isDaemon = true }.start()
-        try {
-            writeLine(p, GadgetLineCodec.encodeStatusRequest())
-        } catch (e: IOException) {
-            drop(p, "gadget write failed")
-        }
+        link.attach { bytes -> writeOrDrop(p, bytes) }
     }
 
     /** Closes [p] if it is still the open port, and tells the open challenge and the listener. */
@@ -238,19 +230,19 @@ class UsbGadgetSignalSource(
         port = null
         askedFor = null
         closeQuietly(p)
-        router.failAll(GadgetUnavailableException(why))
+        link.detach(why)
         listener?.onLink(false, why)
     }
 
     // ---- reader thread ----
 
+    /** Keeps reading even when idle: the C3's USB-Serial/JTAG only sends while the host is reading. */
     private fun readLoop(p: UsbSerialPort) {
-        val splitter = LineSplitter()
         val buf = ByteArray(READ_BUFFER)
         try {
             while (!closed && port === p) {
                 val n = p.read(buf, READ_TIMEOUT_MS)
-                if (n > 0) splitter.feed(buf, 0, n).forEach(::handleSafely)
+                if (n > 0) link.feed(buf, 0, n)
             }
         } catch (e: IOException) {
             Log.i(TAG, "gadget read ended: ${e.message}")
@@ -260,49 +252,13 @@ class UsbGadgetSignalSource(
         onLink { drop(p, "gadget disconnected") }
     }
 
-    /** One bad line never ends the reader (and so never drops the link): anything [handle] throws skips the line. */
-    private fun handleSafely(piece: LineSplitter.Piece) {
+    private fun writeOrDrop(p: UsbSerialPort, bytes: ByteArray) {
         try {
-            handle(piece)
-        } catch (e: Exception) {
-            val text = (piece as? LineSplitter.Piece.Line)?.text ?: ""
-            listener?.onLine("gadget line skipped (${e.javaClass.simpleName}): ${Redact.line(text)}")
+            synchronized(writeLock) { p.write(bytes, WRITE_TIMEOUT_MS) }
+        } catch (e: IOException) {
+            onLink { drop(p, "gadget write failed") }
+            throw e
         }
-    }
-
-    private fun handle(piece: LineSplitter.Piece) {
-        val line = when (piece) {
-            is LineSplitter.Piece.Oversize -> {
-                listener?.onLine("gadget line over ${LineSplitter.MAX_LINE_BYTES} bytes skipped (${piece.bytes} bytes)")
-                return
-            }
-            is LineSplitter.Piece.Line -> piece.text
-        }
-        val parsed = try {
-            GadgetLineCodec.parse(line)
-        } catch (e: IllegalArgumentException) {
-            // Boot banners, debug prints, a firmware/phone disagreement: skipped, logged without a full nonce.
-            listener?.onLine("gadget line skipped: ${Redact.line(line)}")
-            return
-        }
-        if (parsed == null) {
-            if (line.isNotBlank()) listener?.onLine("gadget line ignored (unknown type): ${Redact.line(line)}")
-            return
-        }
-        val event = parsed.event
-        when (val route = router.route(parsed)) {
-            AnswerRouter.Route.Delivered -> Unit
-            is AnswerRouter.Route.Dropped -> if (event is SignalEvent.Answer) listener?.onStaleAnswer(event, route.why)
-            AnswerRouter.Route.Unclaimed -> when (event) {
-                is SignalEvent.Answer -> listener?.onStaleAnswer(event, "answer with no open challenge ignored")
-                is SignalEvent.Status -> listener?.onLine("gadget ${event.text}")
-            }
-        }
-    }
-
-    private fun writeLine(p: UsbSerialPort, line: String) {
-        val bytes = (line + "\n").toByteArray(Charsets.UTF_8)
-        synchronized(writeLock) { p.write(bytes, WRITE_TIMEOUT_MS) }
     }
 
     private fun permissionIntent(): PendingIntent {
@@ -320,6 +276,7 @@ class UsbGadgetSignalSource(
         private const val TAG = "FoF"
         const val BAUD = 115_200
         const val POLL_MS = 2_000L
+        const val TICK_MS = 250L
         private const val READ_BUFFER = 4096
         private const val READ_TIMEOUT_MS = 200
         private const val WRITE_TIMEOUT_MS = 500

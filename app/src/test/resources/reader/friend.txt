@@ -1,0 +1,12 @@
+# Reader lines of firmware/diagnostics/2026-10-10/adv600.json trial 1 (Ihan's capture),
+# GUI-added "source" and the 76-hex "raw" packet dump removed (the phone does not read it);
+# @ID@ = the phone's request id, @BOOT@ = the handshaken boot id.
+# Note the order: RESULT before the RX_RESPONSE that carries the answer (lossy diagnostic queue).
+{"event":"ACK","request_id":"@ID@","accepted":true,"reason":"ACCEPTED","state":"QUERYING"}
+{"event":"STATE","boot_id":"@BOOT@","request_id":"@ID@","state":"QUERYING","reason":"CHANGED"}
+{"event":"TX_CHALLENGE","request_id":"@ID@","query":1,"at_ms":8104,"elapsed_ms":0,"bytes":38,"version":1,"type":1,"reader_id":1,"drone_id":1,"nonce":"44ad3f50c8539c3d2121b4cb9e7e1e25","tag":"612e4fc4fdcd1f5958c7b557004bdda7","result":"BROADCAST_STARTED"}
+{"event":"RESULT","request_id":"@ID@","query":1,"response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":460,"elapsed_ms":460,"replay":false}
+{"event":"STATE","boot_id":"@BOOT@","request_id":"@ID@","state":"COOLDOWN","reason":"CHANGED"}
+{"event":"RX_RESPONSE","request_id":"@ID@","query":1,"at_ms":8564,"elapsed_ms":460,"bytes":38,"version":1,"type":2,"reader_id":1,"drone_id":1,"nonce":"44ad3f50c8539c3d2121b4cb9e7e1e25","tag":"3ada182c07bc22049b25bb3fc8326391","result":"FRIEND"}
+{"event":"RX_RESPONSE","request_id":"@ID@","query":1,"at_ms":8727,"elapsed_ms":623,"bytes":38,"version":1,"type":2,"reader_id":1,"drone_id":1,"nonce":"44ad3f50c8539c3d2121b4cb9e7e1e25","tag":"3ada182c07bc22049b25bb3fc8326391","result":"IGNORED_NOT_WAITING"}
+{"event":"STATE","boot_id":"@BOOT@","request_id":"@ID@","state":"IDLE","reason":"CHANGED"}

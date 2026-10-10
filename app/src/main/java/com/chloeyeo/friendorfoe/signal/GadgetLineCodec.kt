@@ -1,123 +1,236 @@
 package com.chloeyeo.friendorfoe.signal
 
-import com.chloeyeo.friendorfoe.session.VerdictKind
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * The USB gadget link's line format (README "Gadget link over USB", docs/GADGET_LINK.md): one JSON object per
- * line, 115200 8N1. This codec is pure (org.json only) and unit-tested; the transport lives in
- * [UsbGadgetSignalSource].
+ * Ihan's reader protocol (firmware/reader/reader.ino, firmware/README.md; docs/GADGET_LINK.md): plain-text command
+ * lines in, one JSON object per line out, keyed by `"event"`. Pure (org.json only) and unit-tested; the protocol
+ * engine is [ReaderLink], the USB transport [UsbGadgetSignalSource].
  *
  * ```
- * phone -> gadget   {"cmd":"challenge","boxId":3,"challengerId":7,"t":1760000000,"seq":12}
- *                   {"cmd":"status"}
- * gadget -> phone   {"type":"answer","seq":12,"boxId":3,"verdict":"FRIEND","reason":null,"droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}
- *                   {"type":"answer","verdict":"FOE","reason":"replayed nonce","droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-61,"responseMs":40}
- *                   {"type":"answer","verdict":"UNKNOWN","reason":"no response","nonce":"<32 hex>","responseMs":10000}
- *                   {"type":"status","fw":"0.1","battery":3.9,"mode":"HONEST"}
+ * phone -> reader   QUERY <request_id>          STATUS [request_id]          HELP
+ * reader -> phone   {"event":"ACK","request_id":"..","accepted":true,"reason":"ACCEPTED","state":"QUERYING"}
+ *                   {"event":"STATE","boot_id":"..","request_id":"..","state":"IDLE","reason":"CHANGED"}
+ *                   {"event":"TX_CHALLENGE","request_id":"..","query":1,..,"drone_id":1,"nonce":"<32 hex>",..}
+ *                   {"event":"RESULT","request_id":"..","query":1,"response_received":true,"verdict":"FRIEND",
+ *                    "reason":"NONE","response_ms":460,"elapsed_ms":460,"replay":false}
+ *                   {"event":"STATUS","request_id":"..","role":"reader","interface_version":2,..}
+ *                   KEY: stored            (legacy text from the key store and the radio, CRLF)
  * ```
  *
- * `seq` (the phone's per-challenge counter) and `boxId` are echoed by the gadget in its answer when the firmware
- * supports it; both are optional on the way back, and the transport discards an answer whose echo does not match
- * the open challenge (SIG-03 attribution).
+ * The phone never sends `KEY` (the shared key is provisioned by Ihan over his own serial tool).
  */
 object GadgetLineCodec {
-    const val CMD_CHALLENGE = "challenge"
-    const val CMD_STATUS = "status"
-    const val TYPE_ANSWER = "answer"
-    const val TYPE_STATUS = "status"
+    /** The reader's line buffer is `char[80]`: 79 bytes before the LF, longer lines get `COMMAND_TOO_LONG`. */
+    const val MAX_COMMAND_BYTES = 79
 
-    /** `{"cmd":"challenge","boxId":..,"challengerId":..,"t":..[,"seq":..]}` without the trailing newline. */
-    fun encodeChallenge(req: ChallengeRequest, seq: Long? = null): String = JSONObject()
-        .put("cmd", CMD_CHALLENGE)
-        .put("boxId", req.boxId)
-        .put("challengerId", req.challengerId)
-        .put("t", req.t)
-        .apply { if (seq != null) put("seq", seq) }
-        .toString()
+    /** reader.ino `validId`: 1-32 of `[A-Za-z0-9_-]`. */
+    private val REQUEST_ID = Regex("[A-Za-z0-9_-]{1,32}")
 
-    /** One parsed gadget line: the event plus the answer's optional `seq` / `boxId` echo (null when absent). */
-    data class Line(val event: SignalEvent, val seq: Long? = null, val boxId: Int? = null)
+    const val INTERFACE_VERSION = 2L
 
-    /** `{"cmd":"status"}` without the trailing newline. */
-    fun encodeStatusRequest(): String = JSONObject().put("cmd", CMD_STATUS).toString()
+    fun isValidRequestId(id: String): Boolean = REQUEST_ID.matches(id)
+
+    /** `QUERY <id>` without the trailing LF. */
+    fun encodeQuery(requestId: String): String {
+        require(isValidRequestId(requestId)) { "request id must be 1-32 of [A-Za-z0-9_-]: '$requestId'" }
+        return "QUERY $requestId"
+    }
+
+    /** `STATUS <id>` (or bare `STATUS`) without the trailing LF. */
+    fun encodeStatus(requestId: String? = null): String {
+        if (requestId == null) return "STATUS"
+        require(isValidRequestId(requestId)) { "request id must be 1-32 of [A-Za-z0-9_-]: '$requestId'" }
+        return "STATUS $requestId"
+    }
+
+    /** One reader -> phone line. */
+    sealed interface ReaderEvent {
+        /** First reply to every QUERY (and the reply to a malformed or refused command; `requestId` is then ""). */
+        data class Ack(val requestId: String, val accepted: Boolean, val reason: String, val state: String?) : ReaderEvent
+
+        /** A mode change (`IDLE`, `QUERYING`, `COOLDOWN`); `reason` is `BOOT` once per boot, else `CHANGED`. */
+        data class State(val bootId: String, val requestId: String, val state: String, val reason: String) : ReaderEvent
+
+        /** The final verdict of one query (one per nonce); `replay` when re-sent for a duplicate request id. */
+        data class Result(
+            val requestId: String,
+            val query: Long,
+            val responseReceived: Boolean,
+            val verdict: String,
+            val reason: String,
+            val responseMs: Long?,
+            val elapsedMs: Long,
+            val replay: Boolean,
+            /** Not in Ihan's firmware today; read if a later build adds `rssi_dbm` / `rssi`. */
+            val rssiDbm: Int? = null,
+        ) : ReaderEvent
+
+        /** The reader's snapshot; [lastResult] recovers a lost RESULT (the firmware marks it `replay:true`). */
+        data class Status(
+            val requestId: String,
+            val role: String?,
+            val interfaceVersion: Long?,
+            val bootId: String?,
+            val manualQuery: Boolean,
+            val keyConfigured: Boolean,
+            val radioReady: Boolean,
+            val state: String?,
+            val activeRequestId: String,
+            val responseTimeoutMs: Long?,
+            val lastResult: Result?,
+        ) : ReaderEvent {
+            /** What Ihan's host checks before it lets anyone query (reader_backend.py). */
+            val isCompatibleReader: Boolean
+                get() = role == "reader" && interfaceVersion == INTERFACE_VERSION && manualQuery && bootId != null
+        }
+
+        /** `TX_CHALLENGE` / `RX_RESPONSE`: one radio packet, from the lossy diagnostic queue. */
+        class Packet(
+            val tx: Boolean,
+            val requestId: String,
+            val query: Long?,
+            val elapsedMs: Long?,
+            val droneId: Int?,
+            val nonce: ByteArray?,
+            val result: String,
+            val rssiDbm: Int? = null,
+        ) : ReaderEvent {
+            /** An `RX_RESPONSE` the reader did not count (old nonce, after the deadline, after the verdict). */
+            val ignored: Boolean get() = result.startsWith("IGNORED_")
+
+            override fun toString(): String =
+                "Packet(${if (tx) "TX" else "RX"}, $requestId, query=$query, elapsedMs=$elapsedMs, droneId=$droneId, " +
+                    "nonce=${Redact.nonce(nonce)}, result=$result, rssiDbm=$rssiDbm)"
+        }
+
+        /** `DIAG`: dropped packet logs, or a radio error / receive-queue overflow. */
+        data class Diag(val droppedPacketLogs: Long?, val radioError: Boolean, val queueOverflow: Boolean) : ReaderEvent
+
+        data class Help(val commands: List<String>) : ReaderEvent
+
+        /** A JSON line with an `event` this phone does not use (drone-side events, a later firmware's extras). */
+        data class Other(val event: String) : ReaderEvent
+
+        /** A non-JSON line: the boot banner, key-store replies, ESP ROM text. */
+        data class Text(val text: String) : ReaderEvent {
+            /** The ESP ROM's download-mode banner: the board needs RESET with BOOT released (Ihan: fatal). */
+            val downloadMode: Boolean get() = text.contains("waiting for download", ignoreCase = true)
+        }
+    }
 
     /**
-     * Parses one gadget -> phone line. Returns null for a blank line or an object whose `type` is not one of ours
-     * (the transport logs and skips it); throws [IllegalArgumentException] for malformed JSON, an unknown verdict,
-     * a missing, non-numeric or negative `responseMs`, a non-numeric `rssiDbm` or a bad nonce, so a firmware/phone
-     * disagreement fails loudly. Never throws anything but [IllegalArgumentException].
+     * Parses one reader line. Null for a blank line (the C3 writes one bare LF to wake its USB flag). A line that is
+     * not a JSON object is [ReaderEvent.Text]. Throws [IllegalArgumentException] (and nothing else) for a JSON line
+     * that is broken, or one of the events above with a missing or wrong-typed field.
      */
-    fun parseLine(line: String): SignalEvent? = parse(line)?.event
-
-    /** [parseLine] plus the answer's `seq` / `boxId` echo. */
-    fun parse(line: String): Line? {
+    fun parse(line: String): ReaderEvent? {
         val text = line.trim()
         if (text.isEmpty()) return null
-        return try {
-            val obj = JSONObject(text)
-            when (obj.optString("type", "")) {
-                TYPE_ANSWER -> Line(parseAnswer(obj, text), longOrNull(obj, "seq", text), longOrNull(obj, "boxId", text)?.toInt())
-                TYPE_STATUS -> Line(SignalEvent.Status(statusText(obj)))
-                else -> null
-            }
+        if (!text.startsWith("{")) return ReaderEvent.Text(text)
+        val obj = try {
+            JSONObject(text)
         } catch (e: JSONException) {
-            throw IllegalArgumentException("gadget line is not a valid JSON object: $text", e)
+            throw IllegalArgumentException("reader line is not a valid JSON object", e)
+        }
+        return try {
+            parseObject(obj)
+        } catch (e: JSONException) {
+            throw IllegalArgumentException("reader line has a bad field: ${e.message}", e)
         }
     }
 
-    private fun parseAnswer(obj: JSONObject, text: String): SignalEvent.Answer {
-        val verdictText = stringOrNull(obj, "verdict") ?: throw IllegalArgumentException("answer without verdict: $text")
-        val verdict = VerdictKind.entries.firstOrNull { it.name == verdictText.uppercase() }
-            ?: throw IllegalArgumentException("unknown verdict '$verdictText': $text")
-        val responseMs = longOrNull(obj, "responseMs", text) ?: throw IllegalArgumentException("answer without responseMs: $text")
-        if (responseMs < 0) throw IllegalArgumentException("answer with a negative responseMs: $text")
-        val nonceHex = stringOrNull(obj, "nonce") ?: throw IllegalArgumentException("answer without nonce: $text")
-        val nonce = try {
-            Hex.decode(nonceHex)
-        } catch (e: IllegalArgumentException) {
-            throw IllegalArgumentException("answer with a bad nonce '$nonceHex': ${e.message}", e)
+    private fun parseObject(obj: JSONObject): ReaderEvent {
+        val event = obj.optString("event", "")
+        return when (event) {
+            "ACK" -> ReaderEvent.Ack(str(obj, "request_id"), bool(obj, "accepted"), str(obj, "reason"), optStr(obj, "state"))
+            "STATE" -> ReaderEvent.State(str(obj, "boot_id"), str(obj, "request_id"), str(obj, "state"), str(obj, "reason"))
+            "RESULT" -> result(obj)
+            "STATUS" -> ReaderEvent.Status(
+                requestId = str(obj, "request_id"),
+                role = optStr(obj, "role"),
+                interfaceVersion = optLong(obj, "interface_version"),
+                bootId = optStr(obj, "boot_id"),
+                manualQuery = obj.opt("manual_query") == true,
+                keyConfigured = obj.opt("key_configured") == true,
+                radioReady = obj.opt("radio_ready") == true,
+                state = optStr(obj, "state"),
+                activeRequestId = optStr(obj, "active_request_id") ?: "",
+                responseTimeoutMs = optLong(obj, "response_timeout_ms"),
+                lastResult = (obj.opt("last_result") as? JSONObject)?.let(::result),
+            )
+            "TX_CHALLENGE", "RX_RESPONSE" -> ReaderEvent.Packet(
+                tx = event == "TX_CHALLENGE",
+                requestId = str(obj, "request_id"),
+                query = optLong(obj, "query"),
+                elapsedMs = optLong(obj, "elapsed_ms"),
+                droneId = optLong(obj, "drone_id")?.toInt(),
+                nonce = optStr(obj, "nonce")?.let(::nonce),
+                result = str(obj, "result"),
+                rssiDbm = rssi(obj),
+            )
+            "DIAG" -> ReaderEvent.Diag(
+                droppedPacketLogs = optLong(obj, "dropped_packet_logs"),
+                radioError = obj.opt("radio_error") == true,
+                queueOverflow = obj.opt("receive_queue_overflow") == true,
+            )
+            "HELP" -> ReaderEvent.Help(
+                (obj.opt("commands") as? JSONArray)?.let { a -> List(a.length()) { a.get(it).toString() } } ?: emptyList(),
+            )
+            else -> ReaderEvent.Other(event)
         }
-        return SignalEvent.Answer(
-            verdict = verdict,
-            reason = stringOrNull(obj, "reason"),
-            droneId = stringOrNull(obj, "droneId"),
-            nonce = nonce,
-            rssiDbm = longOrNull(obj, "rssiDbm", text)?.let {
-                if (it !in -255L..255L) throw IllegalArgumentException("answer with an rssiDbm out of range: $text")
-                it.toInt()
-            },
-            responseMs = responseMs,
-            source = SignalKind.USB_GADGET,
-        )
     }
 
-    /** A JSON number as Long; null when absent or JSON null; [IllegalArgumentException] for a string, boolean, object. */
-    private fun longOrNull(obj: JSONObject, key: String, text: String): Long? {
+    private fun result(obj: JSONObject) = ReaderEvent.Result(
+        requestId = str(obj, "request_id"),
+        query = optLong(obj, "query") ?: 0L,
+        responseReceived = bool(obj, "response_received"),
+        verdict = str(obj, "verdict"),
+        reason = str(obj, "reason"),
+        responseMs = optLong(obj, "response_ms")?.also { require(it >= 0) { "negative response_ms" } },
+        elapsedMs = optLong(obj, "elapsed_ms") ?: 0L,
+        replay = obj.opt("replay") == true,
+        rssiDbm = rssi(obj),
+    )
+
+    private fun nonce(hex: String): ByteArray {
+        val bytes = Hex.decode(hex)
+        require(bytes.size == 16) { "nonce must be 16 bytes, got ${bytes.size}" }
+        return bytes
+    }
+
+    private fun rssi(obj: JSONObject): Int? = (optLong(obj, "rssi_dbm") ?: optLong(obj, "rssi"))?.let {
+        require(it in -255L..255L) { "rssi out of range: $it" }
+        it.toInt()
+    }
+
+    private fun str(obj: JSONObject, key: String): String {
+        val v = obj.opt(key)
+        require(v is String) { "field '$key' is missing or not a string" }
+        return v
+    }
+
+    private fun optStr(obj: JSONObject, key: String): String? {
         if (obj.isNull(key)) return null
-        val n = obj.opt(key) as? Number ?: throw IllegalArgumentException("answer field '$key' is not a number: $text")
+        val v = obj.opt(key)
+        require(v is String) { "field '$key' is not a string" }
+        return v
+    }
+
+    private fun bool(obj: JSONObject, key: String): Boolean {
+        val v = obj.opt(key)
+        require(v is Boolean) { "field '$key' is missing or not a boolean" }
+        return v
+    }
+
+    /** A JSON number as Long; null when absent or JSON null; [IllegalArgumentException] for anything else. */
+    private fun optLong(obj: JSONObject, key: String): Long? {
+        if (obj.isNull(key)) return null
+        val n = obj.opt(key) as? Number ?: throw IllegalArgumentException("field '$key' is not a number")
         val d = n.toDouble()
-        if (d.isNaN() || d.isInfinite() || d > Long.MAX_VALUE || d < Long.MIN_VALUE) {
-            throw IllegalArgumentException("answer field '$key' is out of range: $text")
-        }
+        require(!d.isNaN() && !d.isInfinite() && d <= Long.MAX_VALUE && d >= Long.MIN_VALUE) { "field '$key' is out of range" }
         return n.toLong()
     }
-
-    /** `fw 0.1 · battery 3.9 V · mode HONEST` from whichever of the fields are present; `status` when none is. */
-    private fun statusText(obj: JSONObject): String {
-        val parts = ArrayList<String>(3)
-        stringOrNull(obj, "fw")?.let { parts += "fw $it" }
-        if (!obj.isNull("battery")) parts += "battery ${obj.get("battery")} V"
-        stringOrNull(obj, "mode")?.let { parts += "mode $it" }
-        return if (parts.isEmpty()) "status" else parts.joinToString(" · ")
-    }
-
-    /** `isNull` covers both an absent key and a JSON null on Android's and on Maven's org.json alike. */
-    private fun stringOrNull(obj: JSONObject, key: String): String? =
-        if (obj.isNull(key)) null else obj.get(key).toString()
-
-    fun nonceToHex(nonce: ByteArray): String = Hex.encode(nonce)
-
-    fun hexToNonce(hex: String): ByteArray = Hex.decode(hex)
 }

@@ -1,196 +1,165 @@
 package com.chloeyeo.friendorfoe.signal
 
-import com.chloeyeo.friendorfoe.session.VerdictKind
-import org.json.JSONObject
+import com.chloeyeo.friendorfoe.signal.GadgetLineCodec.ReaderEvent
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
-import java.io.File
 
+/** Ihan's reader lines (firmware/reader/reader.ino) through [GadgetLineCodec], mostly from the captured fixtures. */
 class GadgetLineCodecTest {
-    private val nonceHex = "00112233445566778899aabbccddeeff"
+    private fun fixture(name: String, id: String = "abc12345-1-3") =
+        Fixtures.lines(name).map { it.replace("@ID@", id).replace("@BOOT@", "ae07effed99ac4d4").replace("@SID@", "s1") }
 
     @Test
-    fun `challenge line has exactly the README fields`() {
-        val line = GadgetLineCodec.encodeChallenge(ChallengeRequest(boxId = 3, challengerId = 7, t = 1760000000L))
-        val obj = JSONObject(line)
-        assertEquals("challenge", obj.getString("cmd"))
-        assertEquals(3, obj.getInt("boxId"))
-        assertEquals(7, obj.getInt("challengerId"))
-        assertEquals(1760000000L, obj.getLong("t"))
-        assertEquals(4, obj.length())
-        assertTrue("one line, no newline inside", !line.contains('\n'))
+    fun `commands are the reader's plain text lines`() {
+        assertEquals("QUERY abc12345-12-3", GadgetLineCodec.encodeQuery("abc12345-12-3"))
+        assertEquals("STATUS", GadgetLineCodec.encodeStatus())
+        assertEquals("STATUS abc12345-s1", GadgetLineCodec.encodeStatus("abc12345-s1"))
     }
 
     @Test
-    fun `challenge line carries seq when given and answers echo seq and boxId`() {
-        val obj = JSONObject(GadgetLineCodec.encodeChallenge(ChallengeRequest(3, 7, 1L), seq = 12))
-        assertEquals(12L, obj.getLong("seq"))
-        assertEquals(5, obj.length())
-        val line = GadgetLineCodec.parse(
-            """{"type":"answer","seq":12,"boxId":3,"verdict":"FRIEND","nonce":"$nonceHex","rssiDbm":-58,"responseMs":42}""",
-        )!!
-        assertEquals(12L, line.seq)
-        assertEquals(3, line.boxId)
-        assertEquals(VerdictKind.FRIEND, (line.event as SignalEvent.Answer).verdict)
-        val old = GadgetLineCodec.parse("""{"type":"answer","verdict":"FOE","reason":"bad tag","nonce":"$nonceHex","responseMs":40}""")!!
-        assertNull(old.seq)
-        assertNull(old.boxId)
+    fun `request ids follow the reader's rule, 1-32 of letters, digits, dash, underscore`() {
+        assertTrue(GadgetLineCodec.isValidRequestId("a"))
+        assertTrue(GadgetLineCodec.isValidRequestId("A_b-9".padEnd(32, 'x')))
+        assertFalse(GadgetLineCodec.isValidRequestId(""))
+        assertFalse(GadgetLineCodec.isValidRequestId("a".repeat(33)))
+        assertFalse(GadgetLineCodec.isValidRequestId("bad!"))
+        assertFalse(GadgetLineCodec.isValidRequestId("has space"))
+        assertThrows(IllegalArgumentException::class.java) { GadgetLineCodec.encodeQuery("bad!") }
+        assertThrows(IllegalArgumentException::class.java) { GadgetLineCodec.encodeStatus("") }
+        // The longest QUERY still fits the reader's 79-byte line buffer.
+        assertTrue(GadgetLineCodec.encodeQuery("x".repeat(32)).length <= GadgetLineCodec.MAX_COMMAND_BYTES)
     }
 
     @Test
-    fun `wrong-typed or out-of-range numbers are skippable lines, never JSONException`() {
-        val bad = listOf(
-            """"responseMs":"fast"""",
-            """"responseMs":true""",
-            """"responseMs":{"ms":1}""",
-            """"responseMs":-5""",
-            """"responseMs":42,"rssiDbm":"strong"""",
-            """"responseMs":42,"rssiDbm":false""",
-            """"responseMs":42,"rssiDbm":[1]""",
-            """"responseMs":42,"rssiDbm":-99999""",
-            """"responseMs":42,"seq":"x"""",
-            """"responseMs":42,"boxId":{}""",
+    fun `the captured FRIEND exchange parses into ACK, STATE, TX, RESULT and RX`() {
+        val events = fixture("friend.txt").map { GadgetLineCodec.parse(it) }
+        val ack = events[0] as ReaderEvent.Ack
+        assertEquals(ReaderEvent.Ack("abc12345-1-3", true, "ACCEPTED", "QUERYING"), ack)
+        assertEquals(ReaderEvent.State("ae07effed99ac4d4", "abc12345-1-3", "QUERYING", "CHANGED"), events[1])
+        val tx = events[2] as ReaderEvent.Packet
+        assertTrue(tx.tx)
+        assertEquals(1, tx.droneId)
+        assertEquals("44ad3f50c8539c3d2121b4cb9e7e1e25", Hex.encode(tx.nonce!!))
+        assertEquals("BROADCAST_STARTED", tx.result)
+        val result = events[3] as ReaderEvent.Result
+        assertEquals(
+            ReaderEvent.Result("abc12345-1-3", 1, true, "FRIEND", "NONE", 460, 460, false),
+            result,
         )
-        for (fields in bad) {
-            val line = """{"type":"answer","verdict":"FRIEND","nonce":"$nonceHex",$fields}"""
-            assertThrows(line, IllegalArgumentException::class.java) { GadgetLineCodec.parseLine(line) }
-        }
-        // A fractional number is still a number.
-        val ok = GadgetLineCodec.parseLine("""{"type":"answer","verdict":"FRIEND","nonce":"$nonceHex","responseMs":42.7,"rssiDbm":-58.2}""")
-        assertEquals(42L, (ok as SignalEvent.Answer).responseMs)
-        assertEquals(-58, ok.rssiDbm)
+        val rx = events[5] as ReaderEvent.Packet
+        assertFalse(rx.tx)
+        assertEquals("FRIEND", rx.result)
+        assertFalse(rx.ignored)
+        assertTrue((events[6] as ReaderEvent.Packet).ignored)
+        assertEquals("IDLE", (events.last() as ReaderEvent.State).state)
     }
 
     @Test
-    fun `status request line`() {
-        assertEquals("{\"cmd\":\"status\"}", GadgetLineCodec.encodeStatusRequest())
+    fun `the captured NO_RESPONSE result has a null response_ms`() {
+        val result = fixture("no_response.txt").map { GadgetLineCodec.parse(it) }.filterIsInstance<ReaderEvent.Result>().single()
+        assertEquals("UNKNOWN", result.verdict)
+        assertEquals("NO_RESPONSE", result.reason)
+        assertFalse(result.responseReceived)
+        assertNull(result.responseMs)
+        assertEquals(3000L, result.elapsedMs)
     }
 
     @Test
-    fun `parses a FRIEND answer with null reason and an extra airtime field`() {
-        val line = """{"type":"answer","verdict":"FRIEND","reason":null,"droneId":"RQ-07","nonce":"$nonceHex","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}"""
-        val answer = GadgetLineCodec.parseLine(line) as SignalEvent.Answer
-        assertEquals(VerdictKind.FRIEND, answer.verdict)
-        assertNull(answer.reason)
-        assertEquals("RQ-07", answer.droneId)
-        assertEquals(nonceHex, answer.nonceHex)
-        assertEquals(-58, answer.rssiDbm)
-        assertEquals(42L, answer.responseMs)
-        assertEquals(SignalKind.USB_GADGET, answer.source)
+    fun `STATUS is a compatible reader only for role reader, interface 2, manual_query and a boot id`() {
+        val status = GadgetLineCodec.parse(fixture("status.txt").single()) as ReaderEvent.Status
+        assertTrue(status.isCompatibleReader)
+        assertEquals("s1", status.requestId)
+        assertTrue(status.keyConfigured)
+        assertTrue(status.radioReady)
+        assertEquals("IDLE", status.state)
+        assertEquals(3000L, status.responseTimeoutMs)
+        assertNull(status.lastResult)
+        assertFalse(status.copy(role = "drone").isCompatibleReader)
+        assertFalse(status.copy(interfaceVersion = 1).isCompatibleReader)
+        assertFalse(status.copy(manualQuery = false).isCompatibleReader)
+        assertFalse(status.copy(bootId = null).isCompatibleReader)
     }
 
     @Test
-    fun `parses a FOE replayed nonce answer`() {
-        val line = """{"type":"answer","verdict":"FOE","reason":"replayed nonce","droneId":"RQ-07","nonce":"$nonceHex","rssiDbm":-61,"responseMs":40}"""
-        val answer = GadgetLineCodec.parseLine(line) as SignalEvent.Answer
-        assertEquals(VerdictKind.FOE, answer.verdict)
-        assertEquals("replayed nonce", answer.reason)
-        assertEquals(-61, answer.rssiDbm)
-        assertEquals(40L, answer.responseMs)
+    fun `STATUS last_result carries the completed RESULT, marked replay`() {
+        val line = fixture("status_last_result.txt").single()
+        assertTrue("about 500 bytes, under the splitter's limit", line.length in 400..LineSplitter.MAX_LINE_BYTES)
+        val last = (GadgetLineCodec.parse(line) as ReaderEvent.Status).lastResult!!
+        assertEquals("abc12345-1-3", last.requestId)
+        assertEquals("FRIEND", last.verdict)
+        assertTrue(last.replay)
     }
 
     @Test
-    fun `parses an UNKNOWN no response answer without droneId or rssi`() {
-        val line = """{"type":"answer","verdict":"UNKNOWN","reason":"no response","nonce":"$nonceHex","responseMs":10000}"""
-        val answer = GadgetLineCodec.parseLine(line) as SignalEvent.Answer
-        assertEquals(VerdictKind.UNKNOWN, answer.verdict)
-        assertEquals("no response", answer.reason)
-        assertNull(answer.droneId)
-        assertNull(answer.rssiDbm)
-        assertEquals(10000L, answer.responseMs)
+    fun `boot text, blank lines and ROM text are tolerated, download mode is recognised`() {
+        val boot = fixture("boot.txt").map { GadgetLineCodec.parse(it) }
+        assertNull(boot[0]) // the bare wake LF
+        assertEquals(ReaderEvent.Text("KEY: stored"), boot[1])
+        assertTrue(boot[2] is ReaderEvent.Text)
+        assertEquals("BOOT", (boot[3] as ReaderEvent.State).reason)
+        assertTrue((boot[4] as ReaderEvent.Status).isCompatibleReader)
+        assertNull(GadgetLineCodec.parse("   \r"))
+        assertEquals(ReaderEvent.Text("CONFIG: invalid hex"), GadgetLineCodec.parse("CONFIG: invalid hex\r"))
+        assertTrue((GadgetLineCodec.parse("waiting for download") as ReaderEvent.Text).downloadMode)
+        assertFalse((GadgetLineCodec.parse("KEY: missing; enter KEY <64 hex digits>") as ReaderEvent.Text).downloadMode)
     }
 
     @Test
-    fun `parses a status line into readable text`() {
-        val status = GadgetLineCodec.parseLine("""{"type":"status","fw":"0.1","battery":3.9,"mode":"HONEST"}""")
-        assertEquals(SignalEvent.Status("fw 0.1 · battery 3.9 V · mode HONEST"), status)
+    fun `DIAG, HELP and events of other roles parse without failing`() {
+        val diag = fixture("diag.txt").map { GadgetLineCodec.parse(it) }
+        assertEquals(ReaderEvent.Diag(3, false, false), diag[0])
+        assertEquals(ReaderEvent.Diag(null, true, false), diag[1])
+        assertEquals(4, (diag[2] as ReaderEvent.Help).commands.size)
+        assertEquals(ReaderEvent.Other("RX_CHALLENGE"), GadgetLineCodec.parse("""{"event":"RX_CHALLENGE","role":"drone"}"""))
+        assertEquals(ReaderEvent.Other(""), GadgetLineCodec.parse("""{"type":"answer"}"""))
     }
 
     @Test
-    fun `blank lines and unknown types are skipped`() {
-        assertNull(GadgetLineCodec.parseLine(""))
-        assertNull(GadgetLineCodec.parseLine("   \r"))
-        assertNull(GadgetLineCodec.parseLine("""{"type":"debug","text":"hello"}"""))
-        assertNull(GadgetLineCodec.parseLine("""{"cmd":"challenge"}"""))
+    fun `the raw packet dump and unknown keys are ignored`() {
+        val raw = "ab".repeat(38)
+        val line = """{"event":"RX_RESPONSE","request_id":"r1","query":1,"at_ms":5,"elapsed_ms":5,"bytes":38,"version":1,""" +
+            """"type":2,"reader_id":1,"drone_id":1,"nonce":"${"cd".repeat(16)}","tag":"${"ef".repeat(16)}","raw":"$raw","result":"FRIEND","extra":{}}"""
+        val p = GadgetLineCodec.parse(line) as ReaderEvent.Packet
+        assertArrayEquals(ByteArray(16) { 0xCD.toByte() }, p.nonce)
+        assertNull(p.rssiDbm)
     }
 
     @Test
-    fun `malformed lines fail loudly`() {
-        assertThrows(IllegalArgumentException::class.java) { GadgetLineCodec.parseLine("not json") }
-        assertThrows(IllegalArgumentException::class.java) {
-            GadgetLineCodec.parseLine("""{"type":"answer","verdict":"MAYBE","nonce":"$nonceHex","responseMs":1}""")
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            GadgetLineCodec.parseLine("""{"type":"answer","verdict":"FRIEND","nonce":"$nonceHex"}""")
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            GadgetLineCodec.parseLine("""{"type":"answer","verdict":"FRIEND","nonce":"xyz","responseMs":1}""")
-        }
+    fun `a short packet has no nonce fields`() {
+        val p = GadgetLineCodec.parse(
+            """{"event":"RX_RESPONSE","request_id":"r1","query":1,"at_ms":5,"elapsed_ms":5,"bytes":12,"raw":"00","result":"INVALID_MESSAGE"}""",
+        ) as ReaderEvent.Packet
+        assertNull(p.nonce)
+        assertNull(p.droneId)
     }
 
     @Test
-    fun `nonce hex round trips`() {
-        val bytes = GadgetLineCodec.hexToNonce(nonceHex)
-        assertEquals(16, bytes.size)
-        assertEquals(0x00, bytes[0].toInt() and 0xFF)
-        assertEquals(0xFF, bytes[15].toInt() and 0xFF)
-        assertEquals(nonceHex, GadgetLineCodec.nonceToHex(bytes))
-        assertArrayEquals(bytes, GadgetLineCodec.hexToNonce(nonceHex.uppercase()))
+    fun `an rssi field is read if a later firmware adds one`() {
+        val r = GadgetLineCodec.parse(
+            """{"event":"RESULT","request_id":"r1","query":1,"response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":40,"elapsed_ms":40,"replay":false,"rssi_dbm":-61}""",
+        ) as ReaderEvent.Result
+        assertEquals(-61, r.rssiDbm)
     }
 
-    /** Every JSON line in docs/GADGET_LINK.md: commands equal what the phone encodes, gadget lines parse. */
     @Test
-    fun `every example line in GADGET_LINK md round trips`() {
-        val doc = listOf(File("../docs/GADGET_LINK.md"), File("docs/GADGET_LINK.md")).firstOrNull { it.isFile }
-        assumeTrue("docs/GADGET_LINK.md not found from ${File(".").absolutePath}", doc != null)
-        val lines = doc!!.readLines().map { it.trim() }.filter { it.startsWith("{\"") && it.endsWith("}") }
-            .map { it.replace("<32 hex>", nonceHex) }
-        assertTrue("expected the 6 example lines, got ${lines.size}", lines.size >= 6)
-        var commands = 0
-        var events = 0
-        for (line in lines) {
-            val obj = JSONObject(line)
-            when (obj.optString("cmd")) {
-                "challenge" -> {
-                    val req = ChallengeRequest(obj.getInt("boxId"), obj.getInt("challengerId"), obj.getLong("t"))
-                    val seq = if (obj.has("seq")) obj.getLong("seq") else null
-                    assertEquals(obj.asMap(), JSONObject(GadgetLineCodec.encodeChallenge(req, seq)).asMap())
-                    commands++
-                }
-                "status" -> {
-                    assertEquals(obj.asMap(), JSONObject(GadgetLineCodec.encodeStatusRequest()).asMap())
-                    commands++
-                }
-                "mode" -> Unit // drone-side bench command, not the phone's
-                else -> {
-                    val event = GadgetLineCodec.parseLine(line)
-                    assertTrue(line, event != null)
-                    if (event is SignalEvent.Answer) {
-                        assertEquals(obj.getString("verdict"), event.verdict.name)
-                        assertEquals(nonceHex, event.nonceHex)
-                        assertEquals(obj.getLong("responseMs"), event.responseMs)
-                        assertEquals(if (obj.isNull("rssiDbm")) null else obj.getInt("rssiDbm"), event.rssiDbm)
-                    }
-                    events++
-                }
-            }
-        }
-        assertEquals(2, commands)
-        assertEquals(4, events)
-    }
-
-    /** android.jar's org.json has no toMap(); compare keys and value texts instead. */
-    private fun JSONObject.asMap(): Map<String, String> = keys().asSequence().associateWith { get(it).toString() }
-
-    @Test
-    fun `an encoded challenge parses back to the same request`() {
-        val req = ChallengeRequest(boxId = 12, challengerId = 65_535, t = 1_760_000_123L)
-        val obj = JSONObject(GadgetLineCodec.encodeChallenge(req))
-        assertEquals(req, ChallengeRequest(obj.getInt("boxId"), obj.getInt("challengerId"), obj.getLong("t")))
+    fun `broken JSON and wrong-typed fields fail with IllegalArgumentException only`() {
+        val bad = listOf(
+            """{"event":"ACK",""",
+            """{"event":"ACK","request_id":"r1","accepted":"yes","reason":"ACCEPTED"}""",
+            """{"event":"ACK","accepted":true,"reason":"ACCEPTED"}""",
+            """{"event":"RESULT","request_id":"r1","response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":"fast"}""",
+            """{"event":"RESULT","request_id":"r1","response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":-5}""",
+            """{"event":"RESULT","request_id":"r1","verdict":"FRIEND","reason":"NONE"}""",
+            """{"event":"TX_CHALLENGE","request_id":"r1","nonce":"xyz","result":"BROADCAST_STARTED"}""",
+            """{"event":"TX_CHALLENGE","request_id":"r1","nonce":"0011","result":"BROADCAST_STARTED"}""",
+            """{"event":"STATE","boot_id":7,"request_id":"","state":"IDLE","reason":"BOOT"}""",
+            """{"event":"RESULT","request_id":"r1","response_received":true,"verdict":"FRIEND","reason":"NONE","response_ms":1,"rssi":900}""",
+        )
+        for (line in bad) assertThrows(line, IllegalArgumentException::class.java) { GadgetLineCodec.parse(line) }
     }
 }
