@@ -207,16 +207,17 @@ USB CDC serial (the phone is USB host over OTG; library `com.github.mik3y:usb-se
 115200 8N1, one JSON object per line. The gadget generates the nonce, runs the radio exchange and the crypto.
 
 ```
-phone → gadget   {"cmd":"challenge","boxId":3,"challengerId":7,"t":1760000000}
+phone → gadget   {"cmd":"challenge","boxId":3,"challengerId":7,"t":1760000000,"seq":12}
                  {"cmd":"status"}
-gadget → phone   {"type":"answer","verdict":"FRIEND","reason":null,"droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}
-                 {"type":"answer","verdict":"FOE","reason":"replayed nonce","droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-61,"responseMs":40}
-                 {"type":"answer","verdict":"UNKNOWN","reason":"no response","nonce":"<32 hex>","responseMs":10000}
+gadget → phone   {"type":"answer","seq":12,"boxId":3,"verdict":"FRIEND","reason":null,"droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}
+                 {"type":"answer","seq":12,"boxId":3,"verdict":"FOE","reason":"replayed nonce","droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-61,"responseMs":40}
+                 {"type":"answer","seq":12,"boxId":3,"verdict":"UNKNOWN","reason":"no response","nonce":"<32 hex>","responseMs":10000}
                  {"type":"status","fw":"0.1","battery":3.9,"mode":"HONEST"}
 ```
 
 Ihan decides what the gadget actually is (board, radio, how the drone-side attack modes are switched) and
-keeps `docs/GADGET_LINK.md` current; the phone side only depends on the lines above. Because the gadget is
+keeps `docs/GADGET_LINK.md` current; the phone side only depends on the lines above. The answer echoes the
+challenge's `seq` and `boxId`; the phone discards an answer whose echo does not match the open challenge. Because the gadget is
 developed on the bench over USB-C to a laptop, the whole link can be exercised before the phone exists:
 `laptop/gadget_cli.py` sends the same JSON lines from the laptop and prints the answers.
 

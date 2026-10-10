@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.hardware.usb.UsbDevice
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver
@@ -15,7 +16,6 @@ import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import com.hoho.android.usbserial.driver.UsbSerialProber
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
@@ -34,7 +34,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Lifecycle: [start] registers for USB attach/detach and the permission answer and polls every 2 s; the first
  * serial device found is asked for permission once per attach (system dialog), then opened; `{"cmd":"status"}` is
  * written on open. A reader thread turns lines into [SignalEvent]s: while a [challenge] is open they go to its
- * flow, otherwise they go to [listener] (status replies, answers with no open challenge, skipped lines). Unplug,
+ * flow, otherwise they go to [listener] (status replies, answers with no open challenge, skipped lines). Which
+ * challenge an answer belongs to is decided by [AnswerRouter] (the `seq` echo, `gadget busy` after a silent
+ * window, the age check), so a stale answer is never drawn on the next tapped box. Unplug,
  * a read error or a detach broadcast closes the port and reports `connected = false`; the 2 s poll reopens it on
  * re-plug. Nothing here touches the network, and no USB error crashes the app.
  *
@@ -47,6 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class UsbGadgetSignalSource(
     context: Context,
     private val prober: () -> UsbSerialProber = { UsbSerialProber.getDefaultProber() },
+    clock: () -> Long = SystemClock::elapsedRealtime,
 ) : SignalSource {
     override val kind: SignalKind = SignalKind.USB_GADGET
 
@@ -54,6 +57,11 @@ class UsbGadgetSignalSource(
     interface Listener {
         fun onLink(connected: Boolean, note: String)
         fun onLine(text: String)
+
+        /** An answer that belongs to no open challenge (stale or unclaimed), with why it was not delivered. */
+        fun onStaleAnswer(answer: SignalEvent.Answer, why: String) {
+            onLine("$why · ${answer.verdict} · nonce ${Redact.nonce(answer.nonce)}")
+        }
     }
 
     @Volatile var listener: Listener? = null
@@ -67,8 +75,8 @@ class UsbGadgetSignalSource(
     /** The open port; null while no gadget is connected. Written on the link thread only. */
     @Volatile private var port: UsbSerialPort? = null
 
-    /** The open challenge's inbox; at most one (the coordinator refuses a second tap). */
-    @Volatile private var pending: Channel<SignalEvent>? = null
+    /** The open challenge and the stale one that may still answer; at most one open (the coordinator refuses a second tap). */
+    private val router = AnswerRouter(clock)
 
     private val writeLock = Any()
 
@@ -111,26 +119,24 @@ class UsbGadgetSignalSource(
 
     override suspend fun challenge(req: ChallengeRequest): Flow<SignalEvent> {
         val p = port ?: throw GadgetUnavailableException("no gadget")
-        val inbox = Channel<SignalEvent>(Channel.UNLIMITED)
-        pending?.close()
-        pending = inbox
+        val open = router.begin(req.boxId) // throws `gadget busy` while the last silent challenge may still answer
         try {
-            withContext(Dispatchers.IO) { writeLine(p, GadgetLineCodec.encodeChallenge(req)) }
+            withContext(Dispatchers.IO) { writeLine(p, GadgetLineCodec.encodeChallenge(req, open.seq)) }
         } catch (e: IOException) {
-            if (pending === inbox) pending = null
+            router.abort(open)
             onLink { drop(p, "gadget write failed") }
             throw GadgetUnavailableException("gadget write failed", e)
         }
         return flow {
             try {
-                emit(SignalEvent.Status("challenge sent · box ${req.boxId}"))
+                emit(SignalEvent.Status("challenge sent · box ${req.boxId} · seq ${open.seq}"))
                 // An inbox closed with a cause (unplug mid-challenge) rethrows GadgetUnavailableException here.
-                for (event in inbox) {
+                for (event in open.inbox) {
                     emit(event)
                     if (event is SignalEvent.Answer) break
                 }
             } finally {
-                if (pending === inbox) pending = null
+                router.finish(open)
             }
         }
     }
@@ -142,8 +148,7 @@ class UsbGadgetSignalSource(
         executor?.shutdownNow()
         port?.let(::closeQuietly)
         port = null
-        pending?.close(GadgetUnavailableException("gadget link closed"))
-        pending = null
+        router.failAll(GadgetUnavailableException("gadget link closed"))
     }
 
     // ---- link thread ----
@@ -233,8 +238,7 @@ class UsbGadgetSignalSource(
         port = null
         askedFor = null
         closeQuietly(p)
-        pending?.close(GadgetUnavailableException(why))
-        pending = null
+        router.failAll(GadgetUnavailableException(why))
         listener?.onLink(false, why)
     }
 
@@ -246,7 +250,7 @@ class UsbGadgetSignalSource(
         try {
             while (!closed && port === p) {
                 val n = p.read(buf, READ_TIMEOUT_MS)
-                if (n > 0) splitter.feed(buf, 0, n).forEach(::handle)
+                if (n > 0) splitter.feed(buf, 0, n).forEach(::handleSafely)
             }
         } catch (e: IOException) {
             Log.i(TAG, "gadget read ended: ${e.message}")
@@ -254,6 +258,16 @@ class UsbGadgetSignalSource(
             Log.w(TAG, "gadget reader: ${t.javaClass.simpleName}")
         }
         onLink { drop(p, "gadget disconnected") }
+    }
+
+    /** One bad line never ends the reader (and so never drops the link): anything [handle] throws skips the line. */
+    private fun handleSafely(piece: LineSplitter.Piece) {
+        try {
+            handle(piece)
+        } catch (e: Exception) {
+            val text = (piece as? LineSplitter.Piece.Line)?.text ?: ""
+            listener?.onLine("gadget line skipped (${e.javaClass.simpleName}): ${Redact.line(text)}")
+        }
     }
 
     private fun handle(piece: LineSplitter.Piece) {
@@ -264,23 +278,25 @@ class UsbGadgetSignalSource(
             }
             is LineSplitter.Piece.Line -> piece.text
         }
-        val event = try {
-            GadgetLineCodec.parseLine(line)
+        val parsed = try {
+            GadgetLineCodec.parse(line)
         } catch (e: IllegalArgumentException) {
             // Boot banners, debug prints, a firmware/phone disagreement: skipped, logged without a full nonce.
             listener?.onLine("gadget line skipped: ${Redact.line(line)}")
             return
         }
-        if (event == null) {
+        if (parsed == null) {
             if (line.isNotBlank()) listener?.onLine("gadget line ignored (unknown type): ${Redact.line(line)}")
             return
         }
-        val inbox = pending
-        if (inbox != null && inbox.trySend(event).isSuccess) return
-        when (event) {
-            is SignalEvent.Answer ->
-                listener?.onLine("answer with no open challenge ignored · ${event.verdict} · nonce ${Redact.nonce(event.nonce)}")
-            is SignalEvent.Status -> listener?.onLine("gadget ${event.text}")
+        val event = parsed.event
+        when (val route = router.route(parsed)) {
+            AnswerRouter.Route.Delivered -> Unit
+            is AnswerRouter.Route.Dropped -> if (event is SignalEvent.Answer) listener?.onStaleAnswer(event, route.why)
+            AnswerRouter.Route.Unclaimed -> when (event) {
+                is SignalEvent.Answer -> listener?.onStaleAnswer(event, "answer with no open challenge ignored")
+                is SignalEvent.Status -> listener?.onLine("gadget ${event.text}")
+            }
         }
     }
 

@@ -27,6 +27,46 @@ class GadgetLineCodecTest {
     }
 
     @Test
+    fun `challenge line carries seq when given and answers echo seq and boxId`() {
+        val obj = JSONObject(GadgetLineCodec.encodeChallenge(ChallengeRequest(3, 7, 1L), seq = 12))
+        assertEquals(12L, obj.getLong("seq"))
+        assertEquals(5, obj.length())
+        val line = GadgetLineCodec.parse(
+            """{"type":"answer","seq":12,"boxId":3,"verdict":"FRIEND","nonce":"$nonceHex","rssiDbm":-58,"responseMs":42}""",
+        )!!
+        assertEquals(12L, line.seq)
+        assertEquals(3, line.boxId)
+        assertEquals(VerdictKind.FRIEND, (line.event as SignalEvent.Answer).verdict)
+        val old = GadgetLineCodec.parse("""{"type":"answer","verdict":"FOE","reason":"bad tag","nonce":"$nonceHex","responseMs":40}""")!!
+        assertNull(old.seq)
+        assertNull(old.boxId)
+    }
+
+    @Test
+    fun `wrong-typed or out-of-range numbers are skippable lines, never JSONException`() {
+        val bad = listOf(
+            """"responseMs":"fast"""",
+            """"responseMs":true""",
+            """"responseMs":{"ms":1}""",
+            """"responseMs":-5""",
+            """"responseMs":42,"rssiDbm":"strong"""",
+            """"responseMs":42,"rssiDbm":false""",
+            """"responseMs":42,"rssiDbm":[1]""",
+            """"responseMs":42,"rssiDbm":-99999""",
+            """"responseMs":42,"seq":"x"""",
+            """"responseMs":42,"boxId":{}""",
+        )
+        for (fields in bad) {
+            val line = """{"type":"answer","verdict":"FRIEND","nonce":"$nonceHex",$fields}"""
+            assertThrows(line, IllegalArgumentException::class.java) { GadgetLineCodec.parseLine(line) }
+        }
+        // A fractional number is still a number.
+        val ok = GadgetLineCodec.parseLine("""{"type":"answer","verdict":"FRIEND","nonce":"$nonceHex","responseMs":42.7,"rssiDbm":-58.2}""")
+        assertEquals(42L, (ok as SignalEvent.Answer).responseMs)
+        assertEquals(-58, ok.rssiDbm)
+    }
+
+    @Test
     fun `status request line`() {
         assertEquals("{\"cmd\":\"status\"}", GadgetLineCodec.encodeStatusRequest())
     }
@@ -118,7 +158,8 @@ class GadgetLineCodecTest {
             when (obj.optString("cmd")) {
                 "challenge" -> {
                     val req = ChallengeRequest(obj.getInt("boxId"), obj.getInt("challengerId"), obj.getLong("t"))
-                    assertEquals(obj.asMap(), JSONObject(GadgetLineCodec.encodeChallenge(req)).asMap())
+                    val seq = if (obj.has("seq")) obj.getLong("seq") else null
+                    assertEquals(obj.asMap(), JSONObject(GadgetLineCodec.encodeChallenge(req, seq)).asMap())
                     commands++
                 }
                 "status" -> {

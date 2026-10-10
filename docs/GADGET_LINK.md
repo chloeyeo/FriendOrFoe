@@ -14,29 +14,31 @@ Unknown keys are ignored; unknown `type`s are logged and skipped; a malformed li
 phone → gadget
 
 ```
-{"cmd":"challenge","boxId":3,"challengerId":7,"t":1760000000}
+{"cmd":"challenge","boxId":3,"challengerId":7,"t":1760000000,"seq":12}
 {"cmd":"status"}
 ```
 
 | key | type | meaning |
 |---|---|---|
 | `cmd` | string | `challenge` or `status` |
-| `boxId` | int | the tapped track; echoed nowhere, the phone keeps the mapping (box lock) |
+| `boxId` | int | the tapped track; echoed back in the answer (the phone also keeps the mapping, box lock) |
 | `challengerId` | int (u16) | this observer's id, goes into the challenge |
 | `t` | int | unix seconds on the phone; the gadget uses it for the day key and the challenge |
+| `seq` | int | the phone's per-challenge counter (1, 2, 3, …); the gadget echoes it in the answer unchanged |
 
 gadget → phone
 
 ```
-{"type":"answer","verdict":"FRIEND","reason":null,"droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}
-{"type":"answer","verdict":"FOE","reason":"replayed nonce","droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-61,"responseMs":40}
-{"type":"answer","verdict":"UNKNOWN","reason":"no response","nonce":"<32 hex>","responseMs":10000}
+{"type":"answer","seq":12,"boxId":3,"verdict":"FRIEND","reason":null,"droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-58,"responseMs":42,"airtimeMs":1.2}
+{"type":"answer","seq":12,"boxId":3,"verdict":"FOE","reason":"replayed nonce","droneId":"RQ-07","nonce":"<32 hex>","rssiDbm":-61,"responseMs":40}
+{"type":"answer","seq":12,"boxId":3,"verdict":"UNKNOWN","reason":"no response","nonce":"<32 hex>","responseMs":10000}
 {"type":"status","fw":"0.1","battery":3.9,"mode":"HONEST"}
 ```
 
 | key | type | meaning |
 |---|---|---|
 | `type` | string | `answer` (exactly one per challenge) or `status` |
+| `seq` / `boxId` | int, optional | the challenge's `seq` and `boxId`, echoed; an answer whose echo differs from the open challenge is discarded |
 | `verdict` | string | `FRIEND`, `FOE`, `UNKNOWN` — the gadget's own verify result |
 | `reason` | string or null | `replayed nonce`, `bad tag`, `position mismatch`, `late response`, `no response`; null for FRIEND |
 | `droneId` | string, optional | display id of the responder (`RQ-07`); absent when nothing answered |
@@ -48,6 +50,15 @@ gadget → phone
 
 Timing on the phone: `SystemClock.elapsedRealtime()` from writing the `challenge` line to reading the `answer`
 line is the USB round trip, compared with the 2.5 s budget alongside `responseMs` (`ReChecks`).
+
+Attribution (SIG-03, `signal/AnswerRouter.kt`): the phone's window is 10 s from the tap, the gadget's timeout is
+10 s from the end of its radio transmission, so the gadget's own `UNKNOWN · no response` always lands just after
+the phone has closed the window. The phone therefore (1) discards an answer whose `seq` or `boxId` echo differs
+from the open challenge, (2) refuses a new challenge with `UNKNOWN · gadget busy` until the silent challenge's
+answer has arrived (it is swallowed) or 11.5 s after its write, and (3) for firmware without the echo, discards an
+answer whose `responseMs` is longer than the time since this challenge's line was written (+300 ms). A line
+with a wrong-typed field (`"responseMs":"fast"`), a negative `responseMs` or an out-of-range `rssiDbm` is skipped
+and logged; it never drops the link.
 
 Bench use: `python laptop/gadget_cli.py --port COM5 challenge` / `status`; the drone-side sketch additionally
 accepts `{"cmd":"mode","mode":"REPLAY"}` on its own serial port for switching attack modes from a laptop.

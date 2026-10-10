@@ -37,10 +37,13 @@ static void sendStatus(const char* mode) {
   Serial.println();
 }
 
-static void sendAnswer(fof1_verdict verdict, const char* droneId, const uint8_t nonce[FOF1_NONCE_LEN],
-                       int rssiDbm, bool hasRssi, uint32_t responseMs) {
+// seq and boxId are the challenge line's own values, echoed so the phone can tie the answer to its tap (SIG-03).
+static void sendAnswer(uint32_t seq, int boxId, fof1_verdict verdict, const char* droneId,
+                       const uint8_t nonce[FOF1_NONCE_LEN], int rssiDbm, bool hasRssi, uint32_t responseMs) {
   JsonDocument doc;
   doc["type"] = "answer";
+  doc["seq"] = seq;
+  doc["boxId"] = boxId;
   doc["verdict"] = fof1_verdict_word(verdict);
   const char* reason = fof1_verdict_reason(verdict);
   if (reason) doc["reason"] = reason; else doc["reason"] = (const char*)NULL;
@@ -59,14 +62,15 @@ static void sendAnswer(fof1_verdict verdict, const char* droneId, const uint8_t 
   Serial.println();
 }
 
-static void handleChallenge(int boxId, uint16_t challengerId, uint32_t t) {
-  (void)boxId;
+static void handleChallenge(uint32_t seq, int boxId, uint16_t challengerId, uint32_t t) {
+  (void)seq; (void)boxId;
   // TODO(stream 2):
   //   1. nonce[16] from the hardware RNG (esp_random() / board RNG); fof1_ledger_issue(&ledger, nonce, t)
   //   2. day_key = fof1_derive_day_key(MASTER_KEY, fof1_day_of(t)); fof1_build_challenge(day_key, nonce, t, challengerId, wire)
   //   3. radio.send(wire, 31); t0 = millis(); wait up to 10 s for a 37-byte reply, note RSSI
   //   4. verdict = fof1_verify_response(day_key, &ledger, &ch, reply or NULL, millis() - t0, &observerPos, heading, now, &resp)
-  //   5. sendAnswer(verdict, "RQ-xx" from resp.drone_id, nonce, rssi, true, millis() - t0)
+  //   5. sendAnswer(seq, boxId, verdict, "RQ-xx" from resp.drone_id, nonce, rssi, true, millis() - t0)
+  //      (also on the 10 s timeout: sendAnswer(seq, boxId, FOF1_UNKNOWN_NO_RESPONSE, NULL, nonce, 0, false, 10000))
   (void)challengerId; (void)t;
   sendStatus("NOT_IMPLEMENTED");  // honest placeholder: the phone shows it in the event log, never as a verdict
 }
@@ -84,7 +88,8 @@ static void handleLine(const char* line) {
   }
   const char* cmd = doc["cmd"] | "";
   if (strcmp(cmd, "challenge") == 0) {
-    handleChallenge(doc["boxId"] | 0, (uint16_t)(doc["challengerId"] | 0), (uint32_t)(doc["t"] | 0UL));
+    handleChallenge((uint32_t)(doc["seq"] | 0UL), doc["boxId"] | 0, (uint16_t)(doc["challengerId"] | 0),
+                    (uint32_t)(doc["t"] | 0UL));
   } else if (strcmp(cmd, "status") == 0) {
     sendStatus("HONEST");  // TODO(stream 2): the reader has no attack modes; report link/radio state instead
   } else {
