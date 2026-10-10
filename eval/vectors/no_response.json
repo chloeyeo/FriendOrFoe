@@ -1,0 +1,44 @@
+{
+  "name": "no_response",
+  "description": "Silence: nothing answered within the window. Never FRIEND.",
+  "protocol": "FOF-1",
+  "version": 1,
+  "master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "responder_master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "day": "20251009",
+  "day_key_hex": "22734d30cc5e6d302ade0b193668ff18e6d69009633447e9f8a76d99233f8adc",
+  "drone_key_hex": "cb5f21681e1cdff3765b8d27e7b61e78b6f598fc4fa641066acbca4d2f583e9c",
+  "t": 1760000100,
+  "now": 1760000110,
+  "challenger_id": 7,
+  "drone_id": 7,
+  "drone_name": "RQ-07",
+  "nonce_hex": "e84459ef28aaa88b51d64a72b88fdc78",
+  "challenge_hex": "01e84459ef28aaa88b51d64a72b88fdc7868e77864000791870421f00bf202",
+  "cmac_hex": "91870421f00bf202",
+  "observer": {
+    "lat": 37.5665,
+    "lon": 126.978,
+    "alt_m": 30.0,
+    "lat_e4": 375665,
+    "lon_e4": 1269780,
+    "alt_10m": 3,
+    "heading_deg": 45.0
+  },
+  "responder": null,
+  "response_hex": null,
+  "tag_hex": null,
+  "response_ms": 10000,
+  "nonce_consumed_before": false,
+  "gates": {
+    "nonce_window_s": 10,
+    "late_ms": 2500,
+    "near_field_m": 30.0,
+    "range_max_m": 3000.0,
+    "cone_deg": 20.0
+  },
+  "expected": {
+    "verdict": "FOF1_UNKNOWN_NO_RESPONSE",
+    "reason": "no response"
+  }
+}

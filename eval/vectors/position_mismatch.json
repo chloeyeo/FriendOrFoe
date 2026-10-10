@@ -1,0 +1,51 @@
+{
+  "name": "position_mismatch",
+  "description": "Relay: a valid answer claiming a position 5.2 km away, beyond the 3 km range gate.",
+  "protocol": "FOF-1",
+  "version": 1,
+  "master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "responder_master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "day": "20251009",
+  "day_key_hex": "22734d30cc5e6d302ade0b193668ff18e6d69009633447e9f8a76d99233f8adc",
+  "drone_key_hex": "cb5f21681e1cdff3765b8d27e7b61e78b6f598fc4fa641066acbca4d2f583e9c",
+  "t": 1760000060,
+  "now": 1760000061,
+  "challenger_id": 7,
+  "drone_id": 7,
+  "drone_name": "RQ-07",
+  "nonce_hex": "9e7772f2faa46ac12e4bd92c1bd2e73b",
+  "challenge_hex": "019e7772f2faa46ac12e4bd92c1bd2e73b68e7783c00077e6be1702233d3b0",
+  "cmac_hex": "7e6be1702233d3b0",
+  "observer": {
+    "lat": 37.5665,
+    "lon": 126.978,
+    "alt_m": 30.0,
+    "lat_e4": 375665,
+    "lon_e4": 1269780,
+    "alt_10m": 3,
+    "heading_deg": 45.0
+  },
+  "responder": {
+    "lat": 37.599737513474665,
+    "lon": 127.01993234174812,
+    "alt_m": 150.0,
+    "lat_e4": 375997,
+    "lon_e4": 1270199,
+    "alt_10m": 15
+  },
+  "response_hex": "0100079e7772f2faa46ac10005bcbd001361b7000f8e69e0ec6299f82cf0cde24a41b6a082",
+  "tag_hex": "8e69e0ec6299f82cf0cde24a41b6a082",
+  "response_ms": 180,
+  "nonce_consumed_before": false,
+  "gates": {
+    "nonce_window_s": 10,
+    "late_ms": 2500,
+    "near_field_m": 30.0,
+    "range_max_m": 3000.0,
+    "cone_deg": 20.0
+  },
+  "expected": {
+    "verdict": "FOF1_FOE_POSITION_MISMATCH",
+    "reason": "position mismatch"
+  }
+}

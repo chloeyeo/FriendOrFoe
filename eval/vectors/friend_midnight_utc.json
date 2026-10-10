@@ -1,0 +1,51 @@
+{
+  "name": "friend_midnight_utc",
+  "description": "Honest responder at exactly 2026-10-10T00:00:00Z: the day key is for 20261010.",
+  "protocol": "FOF-1",
+  "version": 1,
+  "master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "responder_master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "day": "20261010",
+  "day_key_hex": "abb0d601ba0370a62bab21d36274b11f455d4685806843cfd0940c751e6e83c3",
+  "drone_key_hex": "9c8ad17f601b133234f3fd65bf5f35fa70b5b7978fc0a1e8ff9632741fd2785e",
+  "t": 1791590400,
+  "now": 1791590401,
+  "challenger_id": 7,
+  "drone_id": 7,
+  "drone_name": "RQ-07",
+  "nonce_hex": "9e66be892f07910eafe45fcfc54f1f85",
+  "challenge_hex": "019e66be892f07910eafe45fcfc54f1f856ac980000007e4df44928be253ad",
+  "cmac_hex": "e4df44928be253ad",
+  "observer": {
+    "lat": 37.5665,
+    "lon": 126.978,
+    "alt_m": 30.0,
+    "lat_e4": 375665,
+    "lon_e4": 1269780,
+    "alt_10m": 3,
+    "heading_deg": 45.0
+  },
+  "responder": {
+    "lat": 37.56657635644987,
+    "lon": 126.97809633105537,
+    "alt_m": 55.0,
+    "lat_e4": 375666,
+    "lon_e4": 1269781,
+    "alt_10m": 6
+  },
+  "response_hex": "0100079e66be892f07910e0005bb7200136015000606ae6693ab9290902156dbd9bd86356e",
+  "tag_hex": "06ae6693ab9290902156dbd9bd86356e",
+  "response_ms": 47,
+  "nonce_consumed_before": false,
+  "gates": {
+    "nonce_window_s": 10,
+    "late_ms": 2500,
+    "near_field_m": 30.0,
+    "range_max_m": 3000.0,
+    "cone_deg": 20.0
+  },
+  "expected": {
+    "verdict": "FOF1_FRIEND",
+    "reason": null
+  }
+}

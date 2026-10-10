@@ -1,0 +1,51 @@
+{
+  "name": "replayed_nonce",
+  "description": "The same answer presented a second time: the nonce was already consumed.",
+  "protocol": "FOF-1",
+  "version": 1,
+  "master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "responder_master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "day": "20251009",
+  "day_key_hex": "22734d30cc5e6d302ade0b193668ff18e6d69009633447e9f8a76d99233f8adc",
+  "drone_key_hex": "cb5f21681e1cdff3765b8d27e7b61e78b6f598fc4fa641066acbca4d2f583e9c",
+  "t": 1760000020,
+  "now": 1760000021,
+  "challenger_id": 7,
+  "drone_id": 7,
+  "drone_name": "RQ-07",
+  "nonce_hex": "06df4f097c4131e70d3878e9134700cf",
+  "challenge_hex": "0106df4f097c4131e70d3878e9134700cf68e778140007adaf057d20f18a14",
+  "cmac_hex": "adaf057d20f18a14",
+  "observer": {
+    "lat": 37.5665,
+    "lon": 126.978,
+    "alt_m": 30.0,
+    "lat_e4": 375665,
+    "lon_e4": 1269780,
+    "alt_10m": 3,
+    "heading_deg": 45.0
+  },
+  "responder": {
+    "lat": 37.56657635644987,
+    "lon": 126.97809633105537,
+    "alt_m": 55.0,
+    "lat_e4": 375666,
+    "lon_e4": 1269781,
+    "alt_10m": 6
+  },
+  "response_hex": "01000706df4f097c4131e70005bb72001360150006c0916d353ab7f3ba61ee2be680d25a1c",
+  "tag_hex": "c0916d353ab7f3ba61ee2be680d25a1c",
+  "response_ms": 40,
+  "nonce_consumed_before": true,
+  "gates": {
+    "nonce_window_s": 10,
+    "late_ms": 2500,
+    "near_field_m": 30.0,
+    "range_max_m": 3000.0,
+    "cone_deg": 20.0
+  },
+  "expected": {
+    "verdict": "FOF1_FOE_REPLAYED_NONCE",
+    "reason": "replayed nonce"
+  }
+}

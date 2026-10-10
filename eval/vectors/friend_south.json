@@ -1,0 +1,51 @@
+{
+  "name": "friend_south",
+  "description": "Honest responder in the southern hemisphere (negative latitude), near field.",
+  "protocol": "FOF-1",
+  "version": 1,
+  "master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "responder_master_key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "day": "20251009",
+  "day_key_hex": "22734d30cc5e6d302ade0b193668ff18e6d69009633447e9f8a76d99233f8adc",
+  "drone_key_hex": "cb5f21681e1cdff3765b8d27e7b61e78b6f598fc4fa641066acbca4d2f583e9c",
+  "t": 1760000600,
+  "now": 1760000601,
+  "challenger_id": 7,
+  "drone_id": 7,
+  "drone_name": "RQ-07",
+  "nonce_hex": "0df739250a442688f48ed3569674900c",
+  "challenge_hex": "010df739250a442688f48ed3569674900c68e77a5800075bcb578dcb60d603",
+  "cmac_hex": "5bcb578dcb60d603",
+  "observer": {
+    "lat": -33.8688,
+    "lon": 151.2093,
+    "alt_m": 20.0,
+    "lat_e4": -338688,
+    "lon_e4": 1512093,
+    "alt_10m": 2,
+    "heading_deg": 300.0
+  },
+  "responder": {
+    "lat": -33.8688898311175,
+    "lon": 151.20939737017912,
+    "alt_m": 35.0,
+    "lat_e4": -338689,
+    "lon_e4": 1512094,
+    "alt_10m": 4
+  },
+  "response_hex": "0100070df739250a442688fffad4ff0017129e00049b77b44e0acb8eb25df333f13f4d32b1",
+  "tag_hex": "9b77b44e0acb8eb25df333f13f4d32b1",
+  "response_ms": 55,
+  "nonce_consumed_before": false,
+  "gates": {
+    "nonce_window_s": 10,
+    "late_ms": 2500,
+    "near_field_m": 30.0,
+    "range_max_m": 3000.0,
+    "cone_deg": 20.0
+  },
+  "expected": {
+    "verdict": "FOF1_FRIEND",
+    "reason": null
+  }
+}
