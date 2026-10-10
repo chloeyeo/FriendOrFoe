@@ -75,7 +75,7 @@ Plans:
 - [x] 02-01-PLAN.md — Status contract (`StatusUi.modelNote`), `setStatus`/`offlineProbe`, OfflineRule + OfflineProbe, ClikaRT default in Prefs, IoU de-dup and the `/v1/detections` parser (pure, JVM-tested)
 - [x] 02-02-PLAN.md — ClikaRT bring-up with the tensor-op license probe, `ClikaRtDetector` (open/detectRaw/detect), real `HttpDetector` on port 8000 (H4 fallback), debug hooks + parity asset
 - [x] 02-03-PLAN.md — Wall-clock sticky tracks (drone 5 s) and the 10 s box lock on tap in `IffCoordinator`
-- [ ] 02-04-PLAN.md — `RgbaPacker`, CameraX controller (UseCaseGroup + ViewPort, busy gate, first-frame log), preview slot in `CameraScreen`, `MainActivity` wiring, debug launch extras
+- [x] 02-04-PLAN.md — `RgbaPacker`, CameraX controller (UseCaseGroup + ViewPort, busy gate, first-frame log), preview slot in `CameraScreen`, `MainActivity` wiring, debug launch extras
 - [ ] 02-05-PLAN.md — Phone checkpoint 1: airplane-mode bring-up, live boxes, PNG dump + parity vs the CLI, edge mapping, OFFLINE badge, tap lock; H4 branch if the AAR refuses
 - [ ] 02-06-PLAN.md — Phone checkpoint 2: thread/resolution runs, PIT-04 prop decision, README section 10 numbers, H4 gate
 **UI hint**: yes
@@ -216,7 +216,7 @@ Phases execute in numeric order for the single-stream view: 1 → 2 → 3 → 4 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/TBD | In progress | - |
-| 2. On-device detection | 3/6 | In Progress|  |
+| 2. On-device detection | 4/6 | In Progress|  |
 | 3. IFF protocol on the gadget, vectors first (Ihan) | 0/TBD | Not started | - |
 | 4. Gadget link + laptop | 0/TBD | Not started | - |
 | 5. Observer integration | 0/TBD | Not started | - |

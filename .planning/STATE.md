@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-10-10T08:21:00.000Z"
-last_activity: 2026-10-10 -- Completed 02-03 (wall-clock sticky tracks, 10 s box lock on tap, thread-safe coordinator)
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-10-10T08:27:00.000Z"
+last_activity: 2026-10-10 -- Completed 02-04 (RgbaPacker, CameraX controller with busy gate, preview slot, MainActivity wiring, debug extras)
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 6
-  completed_plans: 3
-  percent: 50
+  completed_plans: 4
+  percent: 67
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 2 of 7 (On-device detection)
-Plan: 3 of 6 in current phase (02-03 complete; next 02-04)
+Plan: 4 of 6 in current phase (02-04 complete; next 02-05 phone checkpoint 1)
 Status: Executing
-Last activity: 2026-10-10 -- Completed 02-03 (wall-clock sticky tracks, 10 s box lock on tap, thread-safe coordinator)
+Last activity: 2026-10-10 -- Completed 02-04 (RgbaPacker, CameraX controller with busy gate, preview slot, MainActivity wiring, debug extras)
 
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [█████░░░░░] 50%
 | Phase 02 P01 | 15 min | 3 tasks | 12 files |
 | Phase 02 P02 | 10 min | 3 tasks | 8 files |
 | Phase 02 P03 | 6 min | 2 tasks | 4 files |
+| Phase 02 P04 | 6 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -69,6 +70,7 @@ Recent decisions affecting current work:
 - [02-02]: Model dir is `filesDir/models/rtdetr_v2_r18vd` only, no `getExternalFilesDir` fallback (D-04).
 - [02-02]: `FofApplication.noteFor`: ClikaRtException -> codeName; ModelverseException -> codeName or message.take(80); UnsatisfiedLinkError -> LIBRARY_MISSING; else message.take(80). Fake/http detectors never load the runtime; a blank build license shows `no license in build`.
 - [02-03]: Tracker coasting is wall clock per class (DRONE 5 s, PERSON 1.5 s); the box lock rect is frozen at the tap (frame pixels) and drawn only after the tracker loses the object; `challenge` locks live DRONE ids only and refuses a second tap during the 10 s window; inference runs outside `synchronized(stateLock)`.
+- [02-04]: CameraScreen slot named like origin/jongho (`preview: @Composable (Modifier) -> Unit`, `onPreviewSize`); MainActivity gates frames (dropped while `runtimeLoading` or while the ClikaRT detector is not open) so a load refusal keeps its code name; debug extras (`clika_threads`, `analysis`, `parity`, `dump_frame`, `log_raw`, `detector`) are inert outside debug builds and `clikart:<dir>` must canonicalise into app storage.
 
 - [Team mode]: Three parallel streams — Chloe (@chloeyeo) detection + app shell + integration lead (Phase 2, then Phase 5); Ihan (@angmusae2015) challenge-response in Arduino C/C++ on the gadgets plus the phone's `signal/` package (Phases 3 and 4); Jongho (@ujon) UI + laptop dashboard (against `DemoScenario`, inside Phase 4). Phases 2, 3, 4 run concurrently after Phase 1; integration checkpoints H4 (live boxes), H10 (end-to-end green ring with the gadget), H14 (three rehearsals + backup video), H20 (submission) are the GitHub milestones, with about 30 issues created from the plan.
 - [Decided 2026-10-10]: The gadget runs the crypto; the phone only re-checks — nonce never seen before (`replayed nonce`), round trip or gadget `responseMs` over 2.5 s (`late response`), RSSI below −70 dBm or inconsistent with the near-field claim (`signal mismatch`, "n/a" and skipped when missing unless strict), attribution to the tapped box. Gadget link: USB CDC serial 115200 8N1, newline JSON per README "Gadget link over USB" (usb-serial-for-android on the phone). No second-phone responder; `FakeSignalSource` is the simulator and the on-stage fallback.
@@ -104,6 +106,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-10T08:21:00.000Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-10-10T08:27:00.000Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
