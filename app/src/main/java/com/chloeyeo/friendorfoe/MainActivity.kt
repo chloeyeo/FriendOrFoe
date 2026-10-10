@@ -101,7 +101,7 @@ class MainActivity : ComponentActivity() {
     private fun maybeStartCamera() {
         val pv = previewView ?: return
         if (!cameraPermitted) return
-        if (cameraStarted.compareAndSet(false, true)) cameraController?.start(this, pv, ::onFrame)
+        if (cameraStarted.compareAndSet(false, true)) cameraController?.start(this, pv, ::onFrame, app::runMotionTick)
     }
 
     /** On the lane. Frames are dropped while the runtime loads or after it refused, so the strip keeps its note. */
