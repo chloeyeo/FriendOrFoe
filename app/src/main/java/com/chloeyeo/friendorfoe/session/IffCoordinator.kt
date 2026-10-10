@@ -24,7 +24,8 @@ import kotlinx.coroutines.flow.update
  *    goes to the event log; the [SignalEvent.Answer] goes through `reChecks.check(answer, roundTripMs)` into
  *    [IffState.Verdict] on the locked box, a [SignalUi] row (newest first) and an event line; no answer in time
  *    -> `Verdict(UNKNOWN, "no response", ...)`;
- * 3. post the verdict to the laptop dashboard through `net/EventClient` (fire-and-forget), then release the lock.
+ * 3. log the verdict as a structured [EventUi] (cls, box, verdict, reason, …) and release the lock; the UI mirrors
+ *    the event log to the laptop dashboard (`FriendOrFoeApp` → `net/EventClient`), so do not post it here too.
  *
  * Not thread-safe: [tick] runs on the runtime lane; [state] is read from the UI.
  */
@@ -89,6 +90,19 @@ class IffCoordinator(
     fun log(text: String) {
         eventLog.add(clock(), text)
         _state.update { it.copy(events = eventLog.snapshot()) }
+    }
+
+    /**
+     * The Reset button (OBS-10): forgets the tracks, the nonce ledger, every verdict, the lock and the event log,
+     * so a rehearsal and the live run start clean. Track ids keep counting up (see [Tracker.reset]).
+     */
+    fun reset() {
+        tracker.reset()
+        reChecks.reset()
+        eventLog.clear()
+        iffById.clear()
+        lock = null
+        _state.update { it.copy(tracks = emptyList(), signal = emptyList(), events = emptyList()) }
     }
 
     /** Tap -> challenge -> answer -> re-check -> verdict -> events; see the class KDoc for the plan. */

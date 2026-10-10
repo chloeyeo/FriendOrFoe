@@ -3,6 +3,7 @@ package com.chloeyeo.friendorfoe.app
 import android.content.Context
 import android.content.SharedPreferences
 import com.chloeyeo.friendorfoe.detect.DetectorConfig
+import com.chloeyeo.friendorfoe.detect.LabelMap
 import com.chloeyeo.friendorfoe.signal.ReChecks
 
 /**
@@ -21,6 +22,20 @@ class Prefs(context: Context) {
     var challengerId: Int
         get() = sp.getInt(KEY_CHALLENGER_ID, 7)
         set(value) = sp.edit().putInt(KEY_CHALLENGER_ID, value).apply()
+
+    /** Drone ids this observer accepts as FRIEND (comma-separated in storage). */
+    var acceptedDroneIds: List<String>
+        get() = (sp.getString(KEY_ACCEPTED_DRONE_IDS, null) ?: "RQ-07").split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        set(value) = sp.edit().putString(KEY_ACCEPTED_DRONE_IDS, value.joinToString(",")).apply()
+
+    /** Per-class score floors handed to [LabelMap.accept]. */
+    var personThreshold: Float
+        get() = sp.getFloat(KEY_PERSON_THRESHOLD, LabelMap.DEFAULT_PERSON_THRESHOLD)
+        set(value) = sp.edit().putFloat(KEY_PERSON_THRESHOLD, value).apply()
+
+    var droneThreshold: Float
+        get() = sp.getFloat(KEY_DRONE_THRESHOLD, LabelMap.DEFAULT_DRONE_THRESHOLD)
+        set(value) = sp.edit().putFloat(KEY_DRONE_THRESHOLD, value).apply()
 
     /** Demo mode: FakeSignalSource instead of the USB gadget, DemoScenario available on screen. */
     var demoMode: Boolean
@@ -70,6 +85,9 @@ class Prefs(context: Context) {
     private companion object {
         const val KEY_DETECTOR = "detectorConfig"
         const val KEY_CHALLENGER_ID = "challengerId"
+        const val KEY_ACCEPTED_DRONE_IDS = "acceptedDroneIds"
+        const val KEY_PERSON_THRESHOLD = "personThreshold"
+        const val KEY_DRONE_THRESHOLD = "droneThreshold"
         const val KEY_DEMO_MODE = "demoMode"
         const val KEY_RTT_BUDGET_MS = "rttBudgetMs"
         const val KEY_RSSI_FLOOR_DBM = "rssiFloorDbm"

@@ -23,3 +23,7 @@ local.properties
 __pycache__/
 /firmware/**/build/
 /.idea/deviceManager.xml
+
+# Laptop: scrcpy backup videos, pytest cache
+/recordings/
+.pytest_cache/

@@ -4,8 +4,11 @@ Nothing here is on the IFF critical path: the judges watch the phone (mirrored w
 adds the second ClikaRT device type (`clikart-cli serve --offline`), the eval backend and a live dashboard.
 
 ```
-dashboard/app.py   FastAPI: GET /dashboard (judges' page, polls /api/state every second, no CDN), POST /api/events
-gadget_cli.py      send the phone's JSON lines to the reader gadget over USB serial; --fake prints canned answers
+dashboard/app.py       FastAPI API on :8081 (events, frame, thumbnail, state, reset) + /basic fallback page
+dashboard/feed_demo.py plays the scripted demo run into the API without a phone
+../web/                the judges' dashboard page (Svelte, Vite dev server on :5180, proxies /api to :8081)
+mirror.ps1, mirror.sh  scrcpy mirror of phone A over USB, optional --record for the backup video
+gadget_cli.py          send the phone's JSON lines to the reader gadget over USB serial; --fake prints canned answers
 ```
 
 ## Python
@@ -13,16 +16,26 @@ gadget_cli.py      send the phone's JSON lines to the reader gadget over USB ser
 Python 3.13 with `fastapi`, `uvicorn` already installed in the user site (run plain `python`, **not** `python -I`,
 which hides user-site packages). `pyserial` is needed only for the real gadget: `python -m pip install pyserial`.
 
-## Dashboard (port 8081 — 8080 is taken on Chloe's laptop)
+## Dashboard (API on 8081 — 8080 is taken on Chloe's laptop; page on 5180)
 
 ```
-cd laptop/dashboard
-python -m uvicorn app:app --host 0.0.0.0 --port 8081
-# or: python laptop/dashboard/app.py
+python laptop/dashboard/app.py          # or, from laptop/dashboard: python -m uvicorn app:app --host 0.0.0.0 --port 8081
+cd web && npm install && npm run dev    # npm install once, while online; then http://localhost:5180/dashboard
+python laptop/dashboard/feed_demo.py    # optional: the scripted demo run, no phone needed (--once, --url)
 ```
 
-Open `http://<laptop-ip>:8081/dashboard`. The phone posts `{t, class, box, iffStatus, droneId, reason}` to
-`http://<laptop-ip>:8081/api/events` (settings → dashboard URL). Smoke test without the phone:
+`http://localhost:8081/dashboard` redirects to the Svelte page; `http://localhost:8081/basic` is a single-file
+fallback page (counts + latest events) for a laptop without Node. The page polls `GET /api/state` once a second
+through the Vite proxy; all assets are local (system fonts, no CDN).
+
+On the phone: Settings → Laptop dashboard → `http://<laptop-ip>:8081`. `FriendOrFoeApp` mirrors the event log
+(`POST /api/events`, a JSON list of `{t, class, box, iffStatus, droneId, reason}` plus `text`, `trackId`, `score`,
+`rssiDbm`, `roundTripMs`) and the drawn tracks once a second (`POST /api/frame`, `{t, width, height, tracks:[{id,
+class, box, tag, tone, detail}]}`, boxes in preview pixels, the phone's own tag text). The camera path may add
+`POST /api/thumbnail` (raw JPEG of the preview); the page shows it only while it is fresh. Everything is
+fire-and-forget with a 500 ms timeout; a reset on the phone resets the dashboard too. Counts follow the phone's
+event log: drones and people are distinct tracks, friend / foe / unknown count verdicts.
+Tests: `python -m pytest laptop/dashboard` (needs `httpx` besides fastapi). Smoke test without the phone:
 
 ```
 curl -X POST http://127.0.0.1:8081/api/events -H "Content-Type: application/json" ^
@@ -56,8 +69,13 @@ here; the research notes used 8129/8130 for RT-DETR/OWLv2 — pick one and put i
 
 ## scrcpy (the judges' live view)
 
-`scrcpy --max-size 1280 --stay-awake --window-title FriendOrFoe` over the USB cable; also records the backup video
-(`scrcpy --record demo.mp4`). No network involved.
+```
+.\laptop\mirror.ps1            # Windows; -Record also writes recordings\demo-<time>.mp4 (the backup video)
+laptop/mirror.sh               # macOS / Linux; --record likewise
+```
+
+scrcpy uses adb over the USB cable, so it works in airplane mode. The scripts turn on `--show-touches` (the
+audience sees the tap that triggers the challenge), `--stay-awake` and `--no-audio`; `recordings/` is gitignored.
 
 ## Windows Firewall
 

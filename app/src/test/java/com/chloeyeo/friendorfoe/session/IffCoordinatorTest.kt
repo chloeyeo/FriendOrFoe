@@ -43,6 +43,23 @@ class IffCoordinatorTest {
     }
 
     @Test
+    fun `reset clears tracks nonces and the log`() {
+        val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource())
+        coordinator.tick(frame())
+        coordinator.log("challenge sent · box 2")
+        val idsBefore = coordinator.state.value.tracks.map { it.id }
+
+        coordinator.reset()
+        val cleared = coordinator.state.value
+        assertTrue(cleared.tracks.isEmpty() && cleared.signal.isEmpty() && cleared.events.isEmpty())
+        assertEquals(0, coordinator.reChecks.seenCount)
+
+        coordinator.tick(frame())
+        // Fresh tracks get fresh ids, so an old verdict can never attach to a new object.
+        assertTrue(coordinator.state.value.tracks.none { it.id in idsBefore })
+    }
+
+    @Test
     fun `challenge is the integration lead's TODO`() {
         val coordinator = IffCoordinator(FakeDetector(), FakeSignalSource())
         assertThrows(NotImplementedError::class.java) { coordinator.challenge(1) }

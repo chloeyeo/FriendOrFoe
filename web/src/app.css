@@ -1,0 +1,26 @@
+/* Same palette as the phone (app/.../ui/theme/Color.kt). System fonts only: no CDN at demo time. */
+:root {
+	--amber: #ffb300;
+	--green: #00e676;
+	--red: #ff3d3d;
+	--neutral: #e6e6e6;
+	--ink: #0b0d10;
+	--surface-0: #0b0d10;
+	--surface-1: #161a20;
+	--surface-2: #222831;
+	--text: #f2f4f7;
+	--muted: #9aa4b2;
+	color-scheme: dark;
+}
+
+html,
+body {
+	margin: 0;
+	background: var(--surface-0);
+	color: var(--text);
+	font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+code {
+	font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}

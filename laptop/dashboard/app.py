@@ -1,59 +1,129 @@
-"""FriendOrFoe laptop dashboard (FastAPI, no CDN, no external assets — the demo runs with the network blocked).
+"""FriendOrFoe laptop dashboard API (FastAPI; no CDN, no external assets — the demo runs with the network blocked).
 
     python -m uvicorn app:app --host 0.0.0.0 --port 8081          (run from laptop/dashboard)
     python laptop/dashboard/app.py                                (same, from anywhere)
 
-Routes:
-    GET  /dashboard   the judges' page: counts, the latest events, polls GET /api/state every second (inline JS)
-    GET  /api/state   {"counts": {...}, "events": [...newest first...], "updatedAt": ...}
-    POST /api/events  one event from the phone: {"t", "class", "box", "iffStatus", "droneId", "reason"}
-                      (a JSON list of such objects is accepted too). In-memory, bounded.
-    GET  /health      {"ok": true}
+The judges' page is the Svelte app in `web/` (`npm run dev`, http://localhost:5180/dashboard), which proxies /api
+here; /basic is the single-file fallback page that needs nothing but this process.
 
-Port 8081 because 8080 is taken on the integration lead's laptop. Owner: stream 3 (Jongho) with stream 1 for
-the phone side (app/.../net/EventClient). TODO(stream 3): latest frame thumbnail with rings, nicer layout.
+Routes:
+    GET  /dashboard, /  redirect to the Svelte page (FOF_DASHBOARD_UI, default http://localhost:5180/dashboard)
+    GET  /basic         the inline fallback page (counts + latest events), polls /api/state every second
+    GET  /api/state     {"counts", "events" (newest first), "frame", "thumbnail", "received", "updatedAt", ...}
+    POST /api/events    one event or a JSON list: {"t", "class", "box", "iffStatus", "droneId", "reason"} plus the
+                        optional "text", "trackId", "score", "rssiDbm", "roundTripMs" (app/.../net/EventJson)
+    POST /api/frame     {"t", "width", "height", "tracks": [{"id", "class", "box", "tag", "tone", "detail"}]}
+    POST /api/thumbnail raw image/jpeg of the preview the boxes are measured in (optional)
+    POST /api/reset     clear everything
+    GET  /api/thumbnail.jpg
+    GET  /health        {"ok": true}
+
+Counts follow the phone's event log: drones and people are distinct track ids (an event without one counts on
+its own), friend / foe / unknown count verdicts. Port 8081 because 8080 is taken on the integration lead's laptop.
+Owner: stream 3 (Jongho); the phone side is app/.../net/EventClient.
 """
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 import time
 from collections import deque
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 
-app = FastAPI(title="FriendOrFoe dashboard")
+PORT = int(os.environ.get("FOF_DASHBOARD_PORT", "8081"))
+UI_URL = os.environ.get("FOF_DASHBOARD_UI", "http://localhost:5180/dashboard")
+MAX_EVENTS = 500        # kept in memory; counts stay exact beyond this
+STATE_EVENTS = 100      # sent per poll
+MAX_THUMBNAIL = 2_000_000
+VERDICTS = ("FRIEND", "FOE", "UNKNOWN")
 
-MAX_EVENTS = 500
-_lock = threading.Lock()
-_events: deque[dict[str, Any]] = deque(maxlen=MAX_EVENTS)
-_counts = {"drones": 0, "people": 0, "friend": 0, "foe": 0, "unknown": 0, "events": 0}
-_updated_at = 0.0
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
 
 
-def _ingest(event: dict[str, Any]) -> None:
-    cls = str(event.get("class", "")).lower()
-    status = str(event.get("iffStatus", event.get("verdict", ""))).upper()
-    with _lock:
-        _counts["events"] += 1
-        if cls == "drone":
-            _counts["drones"] += 1
-        elif cls == "person":
-            _counts["people"] += 1
-        if status == "FRIEND":
-            _counts["friend"] += 1
-        elif status == "FOE":
-            _counts["foe"] += 1
-        elif status == "UNKNOWN":
-            _counts["unknown"] += 1
-        event = dict(event)
-        event.setdefault("t", int(time.time() * 1000))
-        event["receivedAt"] = time.time()
-        _events.appendleft(event)
-        global _updated_at
-        _updated_at = time.time()
+class Store:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.reset()
+
+    def reset(self) -> None:
+        with self._lock:
+            self.events: deque[dict[str, Any]] = deque(maxlen=MAX_EVENTS)
+            self.objects: dict[str, set[Any]] = {"drone": set(), "person": set()}
+            self.untracked = {"drone": 0, "person": 0}
+            self.verdicts = {v: 0 for v in VERDICTS}
+            self.frame: dict[str, Any] | None = None
+            self.thumbnail: bytes | None = None
+            self.thumbnail_at: int | None = None
+            self.received = 0
+            self.updated_at = 0.0
+
+    def add(self, items: list[dict[str, Any]]) -> int:
+        with self._lock:
+            for e in items:
+                cls = str(e.get("class") or "").lower()
+                if cls in self.objects:
+                    if e.get("trackId") is None:
+                        self.untracked[cls] += 1
+                    else:
+                        self.objects[cls].add(e["trackId"])
+                status = str(e.get("iffStatus") or e.get("verdict") or "").upper()
+                if status in self.verdicts:
+                    self.verdicts[status] += 1
+                self.received += 1
+                event = dict(e)
+                event.setdefault("t", now_ms())
+                # "id" is unique until the next reset (the phone has no sequence number); the page keys on it.
+                event["id"] = self.received
+                event["receivedAt"] = now_ms()
+                self.events.appendleft(event)
+            if items:
+                self.updated_at = time.time()
+            return len(items)
+
+    def set_frame(self, frame: dict[str, Any]) -> None:
+        with self._lock:
+            self.frame = {**frame, "receivedAt": now_ms()}
+
+    def set_thumbnail(self, jpeg: bytes) -> None:
+        with self._lock:
+            self.thumbnail = jpeg
+            self.thumbnail_at = now_ms()
+
+    def get_thumbnail(self) -> bytes | None:
+        with self._lock:
+            return self.thumbnail
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "counts": {
+                    "drones": len(self.objects["drone"]) + self.untracked["drone"],
+                    "people": len(self.objects["person"]) + self.untracked["person"],
+                    "friend": self.verdicts["FRIEND"],
+                    "foe": self.verdicts["FOE"],
+                    "unknown": self.verdicts["UNKNOWN"],
+                    "events": self.received,
+                },
+                "events": list(self.events)[:STATE_EVENTS],
+                "frame": self.frame,
+                "thumbnail": None
+                if self.thumbnail_at is None
+                else {"receivedAt": self.thumbnail_at, "url": f"/api/thumbnail.jpg?v={self.thumbnail_at}"},
+                "received": self.received,
+                "updatedAt": self.updated_at,
+                "serverTime": now_ms(),
+            }
+
+
+store = Store()
+app = FastAPI(title="FriendOrFoe dashboard", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 @app.get("/health")
@@ -62,31 +132,64 @@ def health() -> dict[str, Any]:
 
 
 @app.post("/api/events")
-async def post_events(request: Request) -> JSONResponse:
+async def post_events(request: Request) -> dict[str, Any]:
     body = await request.json()
     items = body if isinstance(body, list) else [body]
-    for item in items:
-        if isinstance(item, dict):
-            _ingest(item)
-    return JSONResponse({"ok": True, "accepted": len(items)})
+    if not all(isinstance(e, dict) for e in items):
+        raise HTTPException(422, "expected one event object or a list of them")
+    return {"ok": True, "accepted": store.add(items)}
 
 
-@app.get("/api/state")
-def get_state() -> dict[str, Any]:
-    with _lock:
-        return {"counts": dict(_counts), "events": list(_events)[:50], "updatedAt": _updated_at}
+@app.post("/api/frame")
+async def post_frame(request: Request) -> dict[str, Any]:
+    body = await request.json()
+    if not isinstance(body, dict) or not isinstance(body.get("tracks"), list):
+        raise HTTPException(422, "expected {t, width, height, tracks:[...]}")
+    store.set_frame(body)
+    return {"ok": True}
+
+
+@app.post("/api/thumbnail")
+async def post_thumbnail(request: Request) -> dict[str, Any]:
+    jpeg = await request.body()
+    if not jpeg.startswith(b"\xff\xd8") or len(jpeg) > MAX_THUMBNAIL:
+        raise HTTPException(422, "expected one image/jpeg body under 2 MB")
+    store.set_thumbnail(jpeg)
+    return {"ok": True}
 
 
 @app.post("/api/reset")
 def reset() -> dict[str, Any]:
-    with _lock:
-        _events.clear()
-        for k in _counts:
-            _counts[k] = 0
+    store.reset()
     return {"ok": True}
 
 
-DASHBOARD_HTML = """<!doctype html>
+@app.get("/api/state")
+def get_state() -> Response:
+    return Response(json.dumps(store.snapshot(), ensure_ascii=False), media_type="application/json",
+                    headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/thumbnail.jpg")
+def get_thumbnail() -> Response:
+    jpeg = store.get_thumbnail()
+    if jpeg is None:
+        raise HTTPException(404, "no thumbnail yet")
+    return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/")
+@app.get("/dashboard")
+def dashboard() -> RedirectResponse:
+    return RedirectResponse(UI_URL)
+
+
+@app.get("/basic", response_class=HTMLResponse)
+def basic() -> str:
+    return BASIC_HTML
+
+
+BASIC_HTML = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -116,8 +219,8 @@ DASHBOARD_HTML = """<!doctype html>
 <header><h1>FriendOrFoe</h1><span class="muted">observer phone → laptop · offline LAN · <span id="age">waiting…</span></span></header>
 <main>
   <section class="tiles">
-    <div class="tile drones"><div class="n" id="c-drones">0</div><div class="l">drone detections</div></div>
-    <div class="tile"><div class="n" id="c-people">0</div><div class="l">person detections</div></div>
+    <div class="tile drones"><div class="n" id="c-drones">0</div><div class="l">drones</div></div>
+    <div class="tile"><div class="n" id="c-people">0</div><div class="l">people</div></div>
     <div class="tile friend"><div class="n" id="c-friend">0</div><div class="l">friend</div></div>
     <div class="tile foe"><div class="n" id="c-foe">0</div><div class="l">foe</div></div>
     <div class="tile unknown"><div class="n" id="c-unknown">0</div><div class="l">unknown</div></div>
@@ -159,17 +262,7 @@ DASHBOARD_HTML = """<!doctype html>
 """
 
 
-@app.get("/dashboard", response_class=HTMLResponse)
-def dashboard() -> str:
-    return DASHBOARD_HTML
-
-
-@app.get("/", response_class=HTMLResponse)
-def root() -> str:
-    return DASHBOARD_HTML
-
-
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8081)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
