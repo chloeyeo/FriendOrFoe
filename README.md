@@ -119,44 +119,56 @@ EEPROM for the pre-placed key. Docs: https://docs.arduino.cc and https://arduino
 | `signal/` | 2 | `SignalSource` interface, `UsbGadgetSignalSource` (USB CDC serial, newline-delimited JSON), `ReChecks` (pure Kotlin: nonce-never-seen ledger, round-trip budget, RSSI floor; unit-tested), `FakeSignalSource` (scripted answers for every verdict) |
 | `session/` | lead | `IffCoordinator` (tap → challenge → wait for answer → re-check → verdict → events), `ObserverUiState` (the only thing the UI renders), `EventLog` |
 | `net/` | 1 | `EventClient` (fire-and-forget POST to the laptop dashboard), `HttpDetector` transport |
-| `ui/` | 3 | `CameraScreen` + `OverlayPainter` (rings, tags, countdown), `StatusStrip`, `GadgetPanel` (connection, RSSI, last answers), `SettingsScreen`, `EventLogScreen`, theme |
+| `ui/` | 3 | `CameraScreen` + `OverlayPainter` (rings, tags, countdown; skeleton version exists and renders `DemoScenario`), `StatusStrip` (inside CameraScreen for now); to build: `GadgetPanel` (connection, RSSI, last answers), `SettingsScreen`, `EventLogScreen`, theme |
 
-### The three contracts (freeze by H1, change only via a `[shared]` PR)
+### The three contracts (frozen in code since the skeleton commit; change only via a `[shared]` PR)
+
+The files on `main` are the source of truth; this is the summary. Boxes use `detect/BoxF` (a pure-Kotlin
+rectangle) instead of `android.graphics.RectF`, because `RectF` is an empty stub in local unit tests.
 
 ```kotlin
 // detect/Detector.kt — stream 1 provides, everyone consumes
 interface Detector {
-    fun detect(frame: Frame): List<Detection>          // boxes in frame pixels, score-descending
-    val name: String
+    fun detect(frame: Frame): List<Detection>   // frame pixels, score-descending, already filtered by LabelMap
+    val name: String                            // "clikart:rtdetr_v2_r18vd", "http:…", "fake"
+    fun close() {}
 }
-data class Detection(val cls: ObjClass, val score: Float, val box: RectF)
+class Frame(val width: Int, val height: Int, val rgba: ByteArray, val rotationDegrees: Int = 0, val timestampNanos: Long = 0L)
+data class Detection(val cls: ObjClass, val score: Float, val box: BoxF)
+data class BoxF(val left: Float, val top: Float, val right: Float, val bottom: Float)   // + iou(), contains()
 enum class ObjClass { PERSON, DRONE }
 
 // signal/SignalSource.kt — stream 2 provides, the session consumes
 interface SignalSource {
-    suspend fun challenge(req: ChallengeRequest): Flow<SignalEvent>   // the gadget's answer as it arrives
+    suspend fun challenge(req: ChallengeRequest): Flow<SignalEvent>   // Status lines, then at most one Answer
     val kind: SignalKind                                               // USB_GADGET, FAKE
+    fun close() {}
 }
 data class ChallengeRequest(val boxId: Int, val challengerId: Int, val t: Long)
 sealed interface SignalEvent {
-    data class Answer(                       // what the gadget reports; the phone re-checks it
+    class Answer(                            // plain class (ByteArray field): equals/hashCode/copy by content
         val verdict: VerdictKind,            // FRIEND, FOE, UNKNOWN as decided by the gadget's crypto
-        val reason: String?,                 // replayed nonce, bad tag, position mismatch, no response, ...
+        val reason: String?,                 // replayed nonce, bad tag, position mismatch, late response, no response
         val droneId: String?,
-        val nonce: ByteArray,                // the nonce the gadget used; the phone rejects any nonce seen before
+        val nonce: ByteArray,                // 16 bytes; the phone rejects any nonce seen before (nonceHex helper)
         val rssiDbm: Int?, val responseMs: Long, val source: SignalKind,
     ) : SignalEvent
     data class Status(val text: String) : SignalEvent   // "gadget connected", "challenge sent", ...
 }
 
-// session/ObserverUiState.kt — the session produces, stream 3 renders
-data class ObserverUiState(
-    val tracks: List<TrackUi>,       // id, cls, box (preview coords), iff: IffState
-    val status: StatusUi,            // detector name, msPerFrame, fps, modelReady, offline, gadgetConnected, rssi
-    val signal: List<SignalUi>,      // latest answers with rssi / ms / verdict, newest first
-    val events: List<EventUi>,       // event log rows
-)
-sealed interface IffState { object Unchallenged; data class Challenged(val until: Long); data class Verdict(val kind: VerdictKind, val reason: String?, val droneId: String?, val rssiDbm: Int?, val roundTripMs: Long?) }
+// session/ObserverUiState.kt — the session produces, stream 3 renders (every field has a default)
+data class ObserverUiState(val tracks: List<TrackUi>, val status: StatusUi, val signal: List<SignalUi>, val events: List<EventUi>)
+data class TrackUi(val id: Int, val cls: ObjClass, val box: BoxF /* preview pixels */, val iff: IffState)
+data class StatusUi(val detectorName: String, val msPerFrame: Long, val fps: Float, val modelReady: Boolean,
+                    val offline: Boolean, val gadgetConnected: Boolean, val rssiDbm: Int?)
+data class SignalUi(val droneId: String?, val verdict: VerdictKind?, val reason: String?, val rssiDbm: Int?, val roundTripMs: Long?, val ageMs: Long)
+data class EventUi(val t: Long, val text: String)
+sealed interface IffState {
+    data object Unchallenged : IffState
+    data class Challenged(val until: Long, val windowMs: Long = 10_000L) : IffState   // countdown arc = remaining / windowMs
+    data class Verdict(val kind: VerdictKind, val reason: String?, val droneId: String?, val rssiDbm: Int?, val roundTripMs: Long?) : IffState
+}
+enum class VerdictKind { FRIEND, FOE, UNKNOWN }
 ```
 
 `DemoScenario` (in `session/`) produces a scripted `ObserverUiState` sequence (drone appears, challenge,
@@ -172,11 +184,14 @@ the responder answers only authenticated challenges, so an enemy cannot make our
 (responder → observer, directional, short range): `{v=1, droneId, nonce[0:8], pos quantized (lat/lon 1e-4°,
 alt 10 m), tag16 = HMAC(droneKey, "R" ‖ nonce ‖ t ‖ challengerId ‖ droneId ‖ pos)}`; every MAC is over a fixed
 binary layout, never JSON text. **Verify order on the gadget**: nonce issued, unused, under 10 s
-(`replayed nonce`) → tag recomputes (`bad tag`) → position within the cone / near-field (`position mismatch`).
-**Re-checks on the phone**: the nonce was never seen before (`replayed nonce`), round trip within budget
-(`late response`), RSSI above the floor and consistent with the near-field claim (`signal mismatch`), and the
-answer is attributed to the box that was tapped. Any failure is FOE with that reason; no answer in 10 s is
-UNKNOWN; silence is never FRIEND. The `firmware/iff` Arduino library implements the gadget side once for both
+(`replayed nonce`) → tag recomputes (`bad tag`) → position within the cone / near-field (`position mismatch`)
+→ answer within the 2.5 s budget (`late response`). **Re-checks on the phone** (`signal/ReChecks`): the nonce
+was never seen before (`replayed nonce`), the phone-measured round trip or the gadget's `responseMs` is within
+the budget (`late response`), RSSI is above the floor, −70 dBm by default (`signal mismatch`; the near-field
+consistency check is a later refinement), and the answer is attributed to the box that was tapped. The stricter
+of the gadget's verdict and the re-check wins. Any failure is FOE with that reason; no answer in 10 s is
+UNKNOWN; silence is never FRIEND. On the wire `droneId` is a 16-bit id; the display id (`RQ-07`) is looked up
+from it. The `firmware/iff` Arduino library implements the gadget side once for both
 gadgets and is checked by the `selftest` sketch against JSON vectors produced by an independent Python
 generator (`eval/gen_vectors.py` also emits them as a `vectors.h` header); the phone-side re-checks are a
 small unit-tested Kotlin class.
