@@ -17,7 +17,7 @@ import org.junit.Test
  */
 class ReaderLinkTest {
     private val fast = ReaderLink.Timing(
-        ackMs = 150, resultAfterAckMs = 250, recoveryStatusMs = 200, idleWaitMs = 150, nonceGraceMs = 60,
+        ackProbeMs = 100, ackMs = 150, resultAfterAckMs = 250, recoveryStatusMs = 200, idleWaitMs = 150, nonceGraceMs = 60,
         readyWaitMs = 150, handshakeRetryMs = 50, handshakeGiveUpMs = 200,
     )
 
@@ -211,10 +211,60 @@ class ReaderLinkTest {
     }
 
     @Test
-    fun `no ACK within the ACK window is gadget no ack`() {
+    fun `no ACK, no STATUS for the id and no STATE QUERYING within the ACK window is gadget no ack`() {
         val (link, port) = attached()
+        val out = link.run()
+        assertEquals("gadget no ack", out.error)
+        assertEquals(listOf("STATUS t3st0001-s1", "QUERY t3st0001-1-3", "STATUS t3st0001-s2"), port.written)
+        assertTrue(out.statusTexts.contains("no ACK yet · asking STATUS"))
+    }
+
+    /** status.txt as the reader prints it while it runs query @ID@. */
+    private fun statusQuerying(): List<String> = lines("status.txt").map {
+        it.replace("\"active_request_id\":\"\"", "\"active_request_id\":\"@ID@\"").replace("\"state\":\"IDLE\"", "\"state\":\"QUERYING\"")
+    }
+
+    /** Feeds the RESULT and the rest of friend.txt [afterMs] after the QUERY, from another thread. */
+    private fun FakeReaderPort.resultLater(afterMs: Long) {
+        val f = lines("friend.txt")
+        Thread {
+            Thread.sleep(afterMs)
+            feed(f.drop(3))
+        }.start()
+    }
+
+    @Test
+    fun `a dropped ACK is covered by the 1_5 s STATUS whose active_request_id is the open query`() {
+        val (link, port) = attached()
+        port.statusScript = statusQuerying()
+        port.queries += listOf(lines("friend.txt")[2]) // TX_CHALLENGE only: the ACK and the STATE line are dropped
+        port.resultLater(afterMs = 240) // after the 150 ms ACK window
+        val out = link.run()
+        assertNull(out.error)
+        assertEquals(VerdictKind.FRIEND, out.answer!!.verdict)
+        assertTrue(out.statusTexts.toString(), out.statusTexts.contains("ACK lost · reader querying (STATUS)"))
+        assertEquals("STATUS t3st0001-s2", port.written[2])
+    }
+
+    @Test
+    fun `a dropped ACK is covered by a STATE QUERYING line for the open query`() {
+        val (link, port) = attached()
+        port.statusScript = null
+        val f = lines("friend.txt")
+        port.queries += listOf(f[1], f[2]) // STATE QUERYING and TX_CHALLENGE; the ACK is dropped
+        port.resultLater(afterMs = 180) // after the 150 ms ACK window, inside the 250 ms after the STATE
+        val out = link.run()
+        assertNull(out.error)
+        assertEquals(VerdictKind.FRIEND, out.answer!!.verdict)
+        assertTrue(out.statusTexts.toString(), out.statusTexts.contains("ACK lost · reader querying (STATE)"))
+    }
+
+    @Test
+    fun `a STATE QUERYING for another request id is not an ACK`() {
+        val (link, port) = attached()
+        port.statusScript = null
+        port.queries += listOf("""{"event":"STATE","boot_id":"@BOOT@","request_id":"someoneelse","state":"QUERYING","reason":"CHANGED"}""")
         assertEquals("gadget no ack", link.run().error)
-        assertEquals(listOf("STATUS t3st0001-s1", "QUERY t3st0001-1-3"), port.written)
     }
 
     @Test

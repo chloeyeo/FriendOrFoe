@@ -97,7 +97,9 @@ The handshake reply (from the firmware's format string; no reader STATUS was cap
    If its last STATE was QUERYING or COOLDOWN, the phone waits up to 3.2 s for STATE IDLE, then writes the QUERY
    (a remaining BUSY becomes `UNKNOWN · gadget busy`).
 4. **`QUERY <id>`** written; the phone's clock starts here for the round trip.
-5. **ACK** expected within 2 s, else `UNKNOWN · gadget no ack`.
+5. **ACK** expected within 2 s. At 1.5 s without one the phone asks `STATUS <id>`: a STATUS whose
+   `active_request_id` is the open query, or a `STATE QUERYING` line carrying its id, counts as the ACK (the ACK
+   line was lost, the query runs). Neither by 2 s → `UNKNOWN · gadget no ack`.
 6. **RESULT** expected within ~3 s (the reader's deadline); at 3.5 s without one the phone asks `STATUS` once and
    takes `last_result` if it carries this id; 5 s after the ACK without a RESULT → `UNKNOWN · gadget no result`
    (the link lost it; distinct from the reader's radio `NO_RESPONSE`, which is `UNKNOWN · no response`).

@@ -25,9 +25,10 @@ import java.security.SecureRandom
  * - **One challenge** ([challenge]): waits (up to 3.2 s) for the reader to be IDLE (it refuses a QUERY for 3 s from
  *   the previous query's start, even after FRIEND), writes `QUERY <request_id>`, and ends with exactly one
  *   [SignalEvent.Answer] mapped by [ReaderVerdicts], or a [GadgetUnavailableException]: ACK refused -> its reason;
- *   no ACK in 2 s -> `gadget no ack`; no RESULT 5 s after the ACK -> `gadget no result` (one `STATUS` at 3.5 s first,
- *   whose `last_result` recovers a lost RESULT; its round trip is then the reader's `response_ms` / `elapsed_ms`,
- *   not the STATUS arrival time).
+ *   no ACK in 2 s -> `gadget no ack`, unless a `STATUS` at 1.5 s says `active_request_id` = this id or a STATE
+ *   QUERYING for this id arrived (the ACK was lost, the query runs); no RESULT 5 s after the ACK -> `gadget no
+ *   result` (one `STATUS` at 3.5 s first, whose `last_result` recovers a lost RESULT; its round trip is then the
+ *   reader's `response_ms` / `elapsed_ms`, not the STATUS arrival time).
  * - **Attribution**: the request id is `<launch prefix>-<seq>-<boxId>` (at most 32 of `[A-Za-z0-9_-]`), unique
  *   across app restarts, so the reader never takes it for a duplicate. Only lines carrying the open query's id reach
  *   it; a RESULT for one of this phone's earlier ids goes to [Listener.onStaleAnswer] and is never drawn.
@@ -68,8 +69,12 @@ class ReaderLink(
         }
     }
 
-    /** Phone-side timing (milliseconds); Ihan's host uses 2 s for the ACK and 4 s for the RESULT. */
+    /**
+     * Phone-side timing (milliseconds); Ihan's host uses 2 s for the ACK and 4 s for the RESULT. [ackProbeMs]: no
+     * ACK by then -> one `STATUS <id>`, whose `active_request_id` (or a STATE QUERYING for the id) stands in for it.
+     */
     data class Timing(
+        val ackProbeMs: Long = 1_500L,
         val ackMs: Long = 2_000L,
         val resultAfterAckMs: Long = 5_000L,
         val recoveryStatusMs: Long = 3_500L,
@@ -215,6 +220,7 @@ class ReaderLink(
         var resultAt = 0L
         var recovered = false
         var recoverySent = false
+        var ackProbeSent = false
         var nonce: ByteArray? = null
         var droneId: Int? = null
         var rssi: Int? = null
@@ -237,6 +243,13 @@ class ReaderLink(
                     emit(SignalEvent.Status("no RESULT yet · asking STATUS"))
                     continue
                 }
+                if (ackedAt < 0 && !ackProbeSent && now >= q.writtenAt + timing.ackProbeMs) {
+                    // The ACK line may be lost on the link while the query runs: ask the reader what it is doing.
+                    ackProbeSent = true
+                    send(p, GadgetLineCodec.encodeStatus(synchronized(lock) { nextStatusIdLocked() }))
+                    emit(SignalEvent.Status("no ACK yet · asking STATUS"))
+                    continue
+                }
                 if (ackedAt < 0 && now >= q.writtenAt + timing.ackMs) throw GadgetUnavailableException(NO_ACK)
                 if (ackedAt >= 0 && now >= ackedAt + timing.resultAfterAckMs) throw GadgetUnavailableException(NO_RESULT)
             }
@@ -246,6 +259,7 @@ class ReaderLink(
                 minOf(
                     if (recoverySent) Long.MAX_VALUE else q.writtenAt + timing.recoveryStatusMs,
                     if (ackedAt < 0) q.writtenAt + timing.ackMs else ackedAt + timing.resultAfterAckMs,
+                    if (ackedAt >= 0 || ackProbeSent) Long.MAX_VALUE else q.writtenAt + timing.ackProbeMs,
                 )
             }
             val ev = withTimeoutOrNull((wakeAt - now).coerceAtLeast(1L)) { q.inbox.receive() } ?: continue
@@ -272,7 +286,16 @@ class ReaderLink(
                     resultAt = clock()
                     if (ackedAt < 0) ackedAt = resultAt
                 }
+                is ReaderEvent.State -> if (ackedAt < 0 && ev.state == QUERYING) {
+                    // STATE QUERYING for this id: the reader took the query, so its ACK was lost on the way.
+                    ackedAt = clock()
+                    emit(SignalEvent.Status("ACK lost · reader querying (STATE)"))
+                }
                 is ReaderEvent.Status -> {
+                    if (ackedAt < 0 && ev.activeRequestId == q.id) {
+                        ackedAt = clock()
+                        emit(SignalEvent.Status("ACK lost · reader querying (STATUS)"))
+                    }
                     val last = ev.lastResult
                     if (result == null && last != null && last.requestId == q.id) {
                         // STATUS always marks last_result replay:true; for this query's own id it is the verdict.
@@ -345,8 +368,9 @@ class ReaderLink(
                         }
                         val p = port
                         if (p != null && handshakeId == null) write = p to startHandshakeLocked()
-                    } else if (prev != null) {
-                        _reader.value = prev.copy(state = ev.state)
+                    } else {
+                        if (prev != null) _reader.value = prev.copy(state = ev.state)
+                        open?.takeIf { it.id == ev.requestId }?.inbox?.trySend(ev)
                     }
                 }
                 is ReaderEvent.Ack -> {
@@ -436,6 +460,7 @@ class ReaderLink(
 
     companion object {
         const val IDLE = "IDLE"
+        const val QUERYING = "QUERYING"
         const val NO_GADGET = "no gadget"
         const val BUSY = "gadget busy"
         const val NO_ACK = "gadget no ack"
