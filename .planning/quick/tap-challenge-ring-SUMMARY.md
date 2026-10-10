@@ -70,3 +70,21 @@ Demo mode (`--ez demo true`, the default on a fresh install) is still the script
 - `d9b0cb8` signal: tie each gadget answer to its challenge and skip malformed lines
 - `a4cee35` signal: default to the USB gadget and tag every fake verdict FAKE
 - `9493f15` session: keep the locked drone's track and cancel challenges on reset and expiry
+
+## Adapted to Ihan's reader firmware (2026-10-10, later)
+
+Ihan's firmware (origin/han `5b26d87`, serial interface v2) replaces the draft JSON protocol; `docs/GADGET_LINK.md`
+now describes his protocol. `AnswerRouter` (seq echo, busy guard, age check) is gone: every line carries the
+phone's unique `request_id` (`<launch prefix>-<seq>-<boxId>`), matched in `signal/ReaderLink`.
+
+- `signal/GadgetLineCodec`: `QUERY <id>` / `STATUS <id>` out; ACK, STATE, TX_CHALLENGE, RX_RESPONSE, RESULT,
+  STATUS, DIAG, HELP and legacy text in. `signal/ReaderVerdicts`: reader verdict -> ring (table in GADGET_LINK.md).
+- `signal/ReaderLink`: STATUS handshake (1 s retry, 5 s give-up), reboot detection by `boot_id`, wait for STATE
+  IDLE before a QUERY (3 s reader cooldown), ACK 2 s, RESULT 5 s after ACK, one STATUS recovery at 3.5 s, nonce
+  from TX_CHALLENGE (300 ms grace), stale RESULTs logged only.
+- `UsbGadgetSignalSource`: transport only; 303a:1001 opened with DTR and RTS off; `UsbAttachActivity` + device
+  filter for the permission. Line limit 1024 bytes.
+- `SignalEvent.Answer.nonce` is nullable, `linkRoundTripMs` added ([shared]); RSSI is never reported, so the
+  RSSI gate is skipped (keep Strict physical off).
+- Tests: 240, 0 failures, including fixtures from Ihan's captures (`app/src/test/resources/reader/`) and an
+  end-to-end coordinator test through a fake serial port.
