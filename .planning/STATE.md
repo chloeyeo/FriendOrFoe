@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-10-10T08:27:00.000Z"
-last_activity: 2026-10-10 -- Completed 02-04 (RgbaPacker, CameraX controller with busy gate, preview slot, MainActivity wiring, debug extras)
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-10-10T08:58:00.000Z"
+last_activity: 2026-10-10 -- Completed 02-05 (phone checkpoint 1: person boxes offline at 0.22 fps, no drone box, license blocked online)
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 6
-  completed_plans: 4
-  percent: 67
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-10-10)
 ## Current Position
 
 Phase: 2 of 7 (On-device detection)
-Plan: 4 of 6 in current phase (02-04 complete; next 02-05 phone checkpoint 1)
+Plan: 5 of 6 in current phase (02-05 complete; next 02-06 phone checkpoint 2)
 Status: Executing
-Last activity: 2026-10-10 -- Completed 02-04 (RgbaPacker, CameraX controller with busy gate, preview slot, MainActivity wiring, debug extras)
+Last activity: 2026-10-10 -- Completed 02-05 (phone checkpoint 1: person boxes offline at 0.22 fps, no drone box, license blocked online)
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [███████░░░] 67%
 | Phase 02 P02 | 10 min | 3 tasks | 8 files |
 | Phase 02 P03 | 6 min | 2 tasks | 4 files |
 | Phase 02 P04 | 6 min | 3 tasks | 7 files |
+| Phase 02 P05 | 40 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,7 @@ Recent decisions affecting current work:
 - [02-02]: `FofApplication.noteFor`: ClikaRtException -> codeName; ModelverseException -> codeName or message.take(80); UnsatisfiedLinkError -> LIBRARY_MISSING; else message.take(80). Fake/http detectors never load the runtime; a blank build license shows `no license in build`.
 - [02-03]: Tracker coasting is wall clock per class (DRONE 5 s, PERSON 1.5 s); the box lock rect is frozen at the tap (frame pixels) and drawn only after the tracker loses the object; `challenge` locks live DRONE ids only and refuses a second tap during the 10 s window; inference runs outside `synchronized(stateLock)`.
 - [02-04]: CameraScreen slot named like origin/jongho (`preview: @Composable (Modifier) -> Unit`, `onPreviewSize`); MainActivity gates frames (dropped while `runtimeLoading` or while the ClikaRT detector is not open) so a load refusal keeps its code name; debug extras (`clika_threads`, `analysis`, `parity`, `dump_frame`, `log_raw`, `detector`) are inert outside debug builds and `clikart:<dir>` must canonicalise into app storage.
+- [02-05]: Criterion 1 met on the on-device path (person boxes in airplane mode, 4489 ms median, 0.22 fps); H4 flip not applied. No drone box on a DJI quadcopter or a laptop-screen photo, so the class proxy (PIT-04 / DET-09) is the open problem for 02-06. Phone A must stay strictly offline (airplane on AND Wi-Fi off): online the credential is LICENSE_STATE_BLOCKED (all hardware seats held by other units); offline it is accepted again.
 
 - [Team mode]: Three parallel streams — Chloe (@chloeyeo) detection + app shell + integration lead (Phase 2, then Phase 5); Ihan (@angmusae2015) challenge-response in Arduino C/C++ on the gadgets plus the phone's `signal/` package (Phases 3 and 4); Jongho (@ujon) UI + laptop dashboard (against `DemoScenario`, inside Phase 4). Phases 2, 3, 4 run concurrently after Phase 1; integration checkpoints H4 (live boxes), H10 (end-to-end green ring with the gadget), H14 (three rehearsals + backup video), H20 (submission) are the GitHub milestones, with about 30 issues created from the plan.
 - [Decided 2026-10-10]: The gadget runs the crypto; the phone only re-checks — nonce never seen before (`replayed nonce`), round trip or gadget `responseMs` over 2.5 s (`late response`), RSSI below −70 dBm or inconsistent with the near-field claim (`signal mismatch`, "n/a" and skipped when missing unless strict), attribution to the tapped box. Gadget link: USB CDC serial 115200 8N1, newline JSON per README "Gadget link over USB" (usb-serial-for-android on the phone). No second-phone responder; `FakeSignalSource` is the simulator and the on-stage fallback.
@@ -87,6 +89,8 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
+- [Phase 2, 02-05]: ClikaRT license seats full — online, phone A gets `LICENSE_STATE_BLOCKED: this credential's hardware seats are all held by other units` and every tick fails; offline it works. Chloe: platform.clika.io → Licenses, release a seat or raise max_hardware. Until then the demo runbook is airplane mode on AND Wi-Fi off (Samsung keeps Wi-Fi on in airplane mode), and no LAN with upstream internet.
+- [Phase 2, 02-05]: PIT-04 — RT-DETR's aeroplane/bird/kite proxies did not fire on a real DJI quadcopter (0.3-0.5 m) or a laptop-screen photo (0.5-0.7 m); raw rows for ids 4/14/33/67 still to be captured with `--ez log_raw true` in 02-06; latency 4.5-7 s/frame vs the ~1 fps target.
 - [Phase 1 / Phase 3]: Gadget board and radio details are open (README section 7): exact Arduino board (native USB CDC or a bridge chip), radio module and whether it exposes per-packet RSSI (this decides whether `FOE · signal mismatch` can be shown at all), USB VID/PID, baud, who flashes, how the drone-side attack modes are switched. Owner: Ihan; needed before Phase 3's radio exchange and Phase 4's USB work.
 - [Phase 1]: License kind confirmation — the stored `CLIKA1-…` credential must be an Offline bundle; check platform.clika.io → Licenses ("Active, Offline") or `clikart-license-init --force`; an Online key dies with `LICENSE_SERVER_UNREACHABLE` in airplane mode. Prove on phone A in airplane mode before Phase 2 (the license binds to ANDROID_ID; the laptop test is not sufficient).
 - [Phase 1]: `adb push` into `Android/data` and hotspot behaviour under airplane mode are OEM-specific (LOW confidence) — test at H0; fallbacks are in ROADMAP.md Phase 1 flags. No phone was attached at init time.
@@ -106,6 +110,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-10-10T08:27:00.000Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-10-10T08:58:00.000Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
